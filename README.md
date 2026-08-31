@@ -146,7 +146,7 @@ The clearest improvement was in the exact things that motivated the skill: font/
 
 This is **one case study, not a universal benchmark claim**. The current skill also contains small fixes made after reviewing that run.
 
-See [`benchmark/`](benchmark/) for the short write-up and visual comparisons.
+See [`example/`](example/) for the short write-up and visual comparisons.
 
 ## Repository
 
@@ -162,7 +162,7 @@ stitch-to-code/
 │       │   └── STRICT_MODE.md
 │       ├── assets/templates/
 │       └── scripts/
-└── benchmark/
+└── example/
     ├── README.md
     └── images/
 ```
