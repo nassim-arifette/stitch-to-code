@@ -23,6 +23,15 @@ npx skills add nassim-arifette/stitch-to-code \
   --copy
 ```
 
+For Claude Code only:
+
+```bash
+npx skills add nassim-arifette/stitch-to-code \
+  --skill stitch-to-code \
+  --agent claude-code \
+  --copy
+```
+
 You can also install it manually by copying:
 
 ```text
