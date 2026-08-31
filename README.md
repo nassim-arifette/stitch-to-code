@@ -1,58 +1,20 @@
 # Stitch to Code
 
-**Stitch to Code is an Agent Skill for coding agents such as Claude Code and Codex.**
+Stitch to Code is a small Agent Skill for coding agents like Codex and Claude Code.
 
-It helps when you have several Google Stitch screens and want the agent to turn them into one coherent app without quietly changing the design or treating every generated screen as a separate truth.
+I made it because I kept running into the same problem with Google Stitch: individual screens could look good, but once a project had several pages, they did not always feel like the same app anymore. The coding agent would then implement those differences literally, or change things Stitch had already defined clearly, like the font or icon set.
+
+This got much more noticeable for me on larger projects. The more screens I had, the more these small and large inconsistencies added up. Using the rules behind this skill helped me a lot more than simply handing every Stitch screen to the coding agent and hoping it would reconcile everything by itself.
 
 > Unofficial community project. Not affiliated with or endorsed by Google.
 
-## Contents
-
-- [Why use it?](#why-use-it)
-- [What it tells the agent to do](#what-it-tells-the-agent-to-do)
-- [Install](#install)
-- [Use it](#use-it)
-- [Lite and Strict](#lite-and-strict)
-- [Accessibility](#accessibility)
-- [First test](#first-test)
-- [Repository](#repository)
-
-## Why use it?
-
-Stitch can make very good individual screens, but a multi-screen project can drift.
-
-One page may use a different header, navigation, card style, search placement, spacing, breakpoint, or even a noticeably different visual language. Then the coding agent can make the problem worse by implementing every screen literally instead of understanding which parts are supposed to stay consistent.
-
-There is also a second kind of drift: Stitch may clearly choose a font, an icon family, exact colors, radii, or assets, and the coding agent silently swaps them for whatever it normally uses.
-
-And mockups naturally contain illustrative content. A KPI, Export button, avatar, notification, or filter in a generated screen is not automatically a real product feature.
-
-Stitch to Code gives the agent one simple idea:
-
-> **Copy deliberate design decisions exactly. Reconcile accidental inconsistencies. Do not invent the product from the mockup.**
-
-## What it tells the agent to do
-
-- Use the **exact font, icon family, icon variants/glyphs, tokens, spacing, radii, breakpoints, and supplied assets** chosen by Stitch when they are defined.
-- Look at the relevant screens **together**, not as unrelated mockups.
-- Keep intentional variants, but normalize accidental cross-screen inconsistencies.
-- Reuse existing components when they already represent the right pattern.
-- Check what the real product actually supports before turning mockup content into functionality.
-- Never leave controls that look interactive but do nothing.
-- Check accessibility in the actual implementation: keyboard, focus, semantics, labels, contrast, and responsive behavior.
-- Validate the coded app in a real browser instead of assuming that matching a screenshot means the work is finished.
-
-The skill does **not** impose a specific font or icon library. If one Stitch project uses Hanken Grotesk + Material Symbols and another uses Geist + Phosphor, the agent should follow the active project.
-
 ## Install
-
-Repository: `nassim-arifette/stitch-to-code`
 
 ```bash
 npx skills add nassim-arifette/stitch-to-code
 ```
 
-Or install only this skill for Codex:
+For Codex only:
 
 ```bash
 npx skills add nassim-arifette/stitch-to-code \
@@ -61,7 +23,7 @@ npx skills add nassim-arifette/stitch-to-code \
   --copy
 ```
 
-Manual project install also works by copying:
+You can also install it manually by copying:
 
 ```text
 skills/stitch-to-code/
@@ -79,7 +41,7 @@ into:
 
 ## Use it
 
-For most projects, there is no setup beyond installing the skill.
+For most projects, installing the skill is enough.
 
 A prompt can be as simple as:
 
@@ -89,31 +51,38 @@ Use the current Stitch project and DESIGN.md, reconcile inconsistencies across s
 and validate the result in the browser.
 ```
 
-The agent should use the Stitch `DESIGN.md` produced by the Stitch workflow. Stitch to Code does **not** replace it with its own generic design system.
+The skill uses the `DESIGN.md` produced by Stitch. It does not replace it with its own design system.
 
-## Lite and Strict
+## What it tries to fix
 
-### Lite — default
+There are a few problems I kept seeing when moving from Stitch to code.
 
-This is what most people should use.
+Screens from the same project can disagree on things like navigation, headers, components, spacing, search placement, breakpoints, or responsive behavior. Sometimes the difference is minor. Sometimes one page looks like it came from a different version of the app.
 
-```text
-my-app/
-├── .stitch/
-│   └── DESIGN.md
-├── src/
-└── ...
-```
+Coding agents can also drift away from choices Stitch actually made. A project may specify a font, an icon family, exact colors, radii, breakpoints, or assets, and the agent may still substitute whatever it normally uses.
 
-No extra Stitch to Code metadata. No Python command. No registry to maintain.
+Mockups can also contain things that only exist to make the screen look realistic. A KPI, export button, avatar, notification, or filter should not automatically become a real product feature.
 
-The agent works from the Stitch references plus the repository itself: existing components, routes, product docs, schemas/API clients when relevant, tests, and code.
+Stitch to Code gives the agent a few rules for dealing with that:
 
-### Strict — optional
+- use the exact font, icons, tokens, spacing, radii, breakpoints, and assets Stitch defines
+- look at related screens together instead of treating each one as an isolated mockup
+- keep intentional differences, but reconcile accidental inconsistencies
+- reuse existing components when they already match the intended pattern
+- check what the app actually supports before turning mockup content into functionality
+- do not leave controls that look interactive but do nothing
+- check keyboard use, focus, semantics, labels, contrast, and responsive behavior in the actual implementation
+- run the app in a real browser before calling the work finished
 
-Strict is only for projects where explicit tracking is genuinely useful: many screens, several contributors, important permissions/actions, sensitive data, or a long Stitch history.
+The skill does not impose a font or icon library of its own. If one Stitch project uses Hanken Grotesk and Material Symbols while another uses Geist and Phosphor, the agent should follow the project it is working on.
 
-It can add:
+## Optional strict mode
+
+Most people do not need this.
+
+The normal workflow does not add metadata files, registries, or Python setup to your project. The agent works from the Stitch references and the repo itself: existing components, routes, product docs, schemas or API clients when relevant, tests, and code.
+
+For larger projects where you actually want explicit tracking, Strict mode can add:
 
 ```text
 .stitch/metadata.json
@@ -121,17 +90,13 @@ docs/ui/UI_PATTERNS.md
 docs/ui/UI_SURFACES.md
 ```
 
-The bundled Python scripts only help initialize and validate this optional Strict state. They are not required for Lite or for the skill itself.
+The bundled Python scripts only initialize and validate this optional state. They are not needed for the skill itself.
 
-See [`STRICT_MODE.md`](skills/stitch-to-code/references/STRICT_MODE.md) if you need it.
-
-## Accessibility
-
-Stitch to Code treats accessibility as part of implementation quality, not as something a screenshot can prove. The coded app should be checked for keyboard navigation, visible focus, semantics, labels, contrast, responsive behavior, dialogs/drawers, and other relevant accessibility concerns.
+See [`STRICT_MODE.md`](skills/stitch-to-code/references/STRICT_MODE.md) for the details.
 
 ## First test
 
-I ran a first blinded A/B test on one frozen multi-screen Stitch project using Codex with `xhigh` reasoning. Both runs started from the same fixture and used the same implementation prompt; one had Stitch to Code installed.
+I ran a first blinded A/B test on one frozen multi-screen Stitch project using Codex with `xhigh` reasoning. Both runs started from the same project and used the same implementation prompt. One had Stitch to Code installed and the other did not.
 
 | Category | Baseline | Stitch to Code |
 | --- | ---: | ---: |
@@ -142,29 +107,14 @@ I ran a first blinded A/B test on one frozen multi-screen Stitch project using C
 | Accessibility | 4/8 | 7/8 |
 | **Total** | **42/56 (75.0%)** | **49/56 (87.5%)** |
 
-The clearest improvement was in the exact things that motivated the skill: font/icon fidelity and accessibility. The skill-assisted run was not better at everything; it also introduced an oversized desktop modal and switched to the full sidebar too early.
+The biggest difference in this test was font and icon fidelity, plus accessibility. Cross-screen consistency was already strong in the baseline on this particular project.
 
-This is **one case study, not a universal benchmark claim**. The current skill also contains small fixes made after reviewing that run.
+The skill run was not better at everything. It also introduced an oversized desktop modal and switched to the full sidebar too early. I kept those failures in the benchmark as well.
 
-See [`example/`](example/) for the short write-up and visual comparisons.
+This is one small test, not a general claim about every Stitch project or every coding agent. My main reason for making the skill came from using this workflow on larger projects, where it helped me much more as inconsistencies accumulated across screens.
 
-## Repository
+See [`example/`](example/) for the screenshots, prompts, and both implementations.
 
-```text
-stitch-to-code/
-├── README.md
-├── LICENSE
-├── skills/
-│   └── stitch-to-code/
-│       ├── SKILL.md
-│       ├── references/
-│       │   ├── QA.md
-│       │   └── STRICT_MODE.md
-│       ├── assets/templates/
-│       └── scripts/
-└── example/
-    ├── README.md
-    └── images/
-```
+## License
 
-That's intentionally about it. The default experience is the skill itself; the rest is optional supporting material.
+MIT
