@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 2,
+  "activeProject": {
+    "title": "[STITCH_PROJECT_TITLE]",
+    "projectId": "[STITCH_PROJECT_ID]",
+    "scope": "[RESPONSIVE_WEB | NATIVE | UNIVERSAL]",
+    "source": "Google Stitch",
+    "lastSyncAt": "[ISO-8601]"
+  },
+  "canonicalBaseline": {
+    "routeOrSurface": "[OPTIONAL_CANONICAL_ROUTE_OR_SCREEN]",
+    "screenId": "[OPTIONAL_STITCH_SCREEN_ID]",
+    "purpose": "Optional methodological reference for shared shell and visual patterns"
+  },
+  "artifactPolicy": {
+    "sourceDirectory": ".stitch/designs/source",
+    "derivedDirectory": ".stitch/designs/derived",
+    "qaDirectory": ".stitch/designs/qa",
+    "hashAlgorithm": "SHA-256",
+    "sourceAssetsAreImmutable": true,
+    "namingPattern": "<slug>--<screenId>--<kind>.<ext>"
+  },
+  "screens": [
+    {
+      "uxId": "UX-[DOMAIN]-01",
+      "label": "[SCREEN_LABEL]",
+      "routeOrSurface": "[/route OR modal:trigger OR state:parent]",
+      "kind": "CANONICAL",
+      "projectId": "[STITCH_PROJECT_ID]",
+      "screenId": "[STITCH_SCREEN_ID]",
+      "canonicalId": null,
+      "supersededBy": null,
+      "retrievedAt": "[ISO-8601]",
+      "artifacts": {
+        "html": {
+          "path": "",
+          "sha256": "",
+          "bytes": 0
+        },
+        "png": {
+          "path": "",
+          "sha256": "",
+          "bytes": 0,
+          "width": 0,
+          "height": 0
+        }
+      },
+      "notes": []
+    }
+  ],
+  "archivePolicy": {
+    "directoryPattern": ".stitch/archive/YYYY-MM-DD--project-slug--projectId",
+    "archiveBeforeCleanup": true
+  }
+}
