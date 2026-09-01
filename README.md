@@ -1,4 +1,5 @@
 # Stitch to Code
+[![skills.sh](https://skills.sh/b/nassim-arifette/stitch-to-code)](https://skills.sh/nassim-arifette/stitch-to-code)
 
 Stitch to Code is a small Agent Skill for coding agents like Codex and Claude Code.
 
