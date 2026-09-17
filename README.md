@@ -14,15 +14,83 @@ It helps coding agents turn Stitch designs into one coherent application by pres
 
 Framework-agnostic. Designed for coding agents such as Codex and Claude Code.
 
-## Install
+## Installation (30-second setup)
 
-Install both the short `stitch` entry point and the reusable `stitch-to-code` skill:
+Stitch to Code ships as two skills that work together:
+
+- **`stitch`** — the short, human-invoked entry point for `implement`, `sync`, and `audit`;
+- **`stitch-to-code`** — the model-invoked design-to-code workflow that does the actual reconciliation, implementation, and validation.
+
+Install both. The `stitch` entry point delegates to `stitch-to-code`.
+
+<details open>
+<summary><strong>Codex</strong></summary>
 
 ```bash
-npx skills add nassim-arifette/stitch-to-code --skill stitch --skill stitch-to-code
+npx skills@latest add nassim-arifette/stitch-to-code \
+  --skill stitch \
+  --skill stitch-to-code \
+  --agent codex
 ```
 
-Add `--agent codex` or `--agent claude-code` to target one agent. For manual installation, copy both folders from `skills/` into your agent's skills directory.
+Then invoke it explicitly with commands such as:
+
+```text
+$stitch implement
+$stitch sync
+$stitch audit
+```
+
+</details>
+
+<details>
+<summary><strong>Claude Code</strong></summary>
+
+```bash
+npx skills@latest add nassim-arifette/stitch-to-code \
+  --skill stitch \
+  --skill stitch-to-code \
+  --agent claude-code
+```
+
+Then invoke it explicitly with commands such as:
+
+```text
+/stitch implement
+/stitch sync
+/stitch audit
+```
+
+</details>
+
+<details>
+<summary><strong>Other supported agents</strong></summary>
+
+Use the skills installer and select the agent you want to install to:
+
+```bash
+npx skills@latest add nassim-arifette/stitch-to-code \
+  --skill stitch \
+  --skill stitch-to-code
+```
+
+The installer supports many coding agents. Explicit command syntax varies by agent, while `stitch-to-code` can still be used automatically when the agent supports model-invoked skills.
+
+</details>
+
+<details>
+<summary><strong>Manual installation</strong></summary>
+
+Copy both skill folders into your agent's skills directory:
+
+```text
+skills/stitch/
+skills/stitch-to-code/
+```
+
+Do not install only `stitch`: it is intentionally a thin entry point and expects `stitch-to-code` to be available.
+
+</details>
 
 ## Use it
 
