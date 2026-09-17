@@ -10,7 +10,7 @@ Strict can add:
 
 ```text
 .stitch/
-├── DESIGN.md          # still owned by the Stitch design workflow
+├── DESIGN.md          # owned by the Stitch / DESIGN.md workflow, not this skill
 ├── metadata.json      # Stitch IDs and artifact provenance
 └── designs/
     ├── source/
@@ -24,7 +24,7 @@ docs/ui/
 
 Keep one kind of truth in one place:
 
-- `DESIGN.md`: visual system;
+- `DESIGN.md`: visual system/source context;
 - `metadata.json`: project/screen IDs, supersession, artifact provenance/hashes;
 - `UI_PATTERNS.md`: decisions shared by several surfaces;
 - `UI_SURFACES.md`: per-surface requirements, exceptions, implementation/integration/QA state.
@@ -52,9 +52,9 @@ Promote a local component/pattern only when there are real convergent consumers.
 
 Do not create parallel Button/Header/Card/Modal/Pagination families just because different Stitch screens happened to render them differently.
 
-## Optional scripts
+## Validation tools
 
-The scripts are helpers for this Strict state; they are not required to run the skill.
+The Python helpers validate **Stitch to Code-owned Strict state**. They do not reimplement Google's `DESIGN.md` specification.
 
 Initialize Strict files:
 
@@ -62,12 +62,20 @@ Initialize Strict files:
 python skills/stitch-to-code/scripts/init_project.py --root . --mode strict
 ```
 
-Validate deterministic state:
+Validate Strict tracking state:
 
 ```bash
 python skills/stitch-to-code/scripts/validate_project.py --root .
 ```
 
-The validator checks things such as duplicate IDs, broken/cyclic `supersededBy` chains, missing artifacts, hashes, and incomplete Strict state.
+The validator checks things such as incomplete Strict state, duplicate IDs, broken/cyclic `supersededBy` chains, missing tracked artifacts, hashes, and unresolved Strict template placeholders.
 
-Lite mode deliberately creates nothing.
+Validate the Stitch/Google design file separately with the official linter when available:
+
+```bash
+npx @google/design.md lint .stitch/DESIGN.md
+```
+
+Browser evidence is independent of Strict mode. Use `scripts/audit-ui.mjs` in both Lite and Strict when Playwright is already available in the target project.
+
+Lite mode deliberately creates no Stitch to Code tracking state.
