@@ -14,7 +14,9 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime, timezone
+import json
 from pathlib import Path
+import re
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -25,8 +27,23 @@ TEMPLATES = SKILL_DIR / "assets" / "templates"
 def write_template(src_name: str, dest: Path, replacements: dict[str, str], force: bool) -> str:
     src = TEMPLATES / src_name
     text = src.read_text(encoding="utf-8")
-    for old, new in replacements.items():
-        text = text.replace(old, new)
+    # Replace each placeholder once; user text must not become another placeholder.
+    pattern = re.compile("|".join(re.escape(key) for key in replacements)) if replacements else None
+
+    def render(value):
+        if isinstance(value, str):
+            return pattern.sub(lambda match: replacements[match.group()], value) if pattern else value
+        if isinstance(value, list):
+            return [render(item) for item in value]
+        if isinstance(value, dict):
+            return {key: render(item) for key, item in value.items()}
+        return value
+
+    if src.suffix == ".json":
+        # Serialize values rather than interpolating unescaped titles/IDs into JSON.
+        text = json.dumps(render(json.loads(text)), indent=2, ensure_ascii=False) + "\n"
+    else:
+        text = render(text)
 
     if dest.exists() and not force:
         return f"SKIP  {dest} (exists)"

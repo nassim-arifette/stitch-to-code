@@ -1,23 +1,16 @@
 # Browser evidence and QA
 
-Use this procedure for web implementations after the implementation gate in `SKILL.md` passes. The principle is: **inspect the live UI first, then inspect source to explain what the browser shows.**
+Use this procedure to validate implementation/sync work, or to audit an existing app without changing it. Inspect the live UI first, then inspect source to explain what the browser shows. Audit-only work reports defects; it does not require an implementation gate or permission to fix them.
 
 ## 1. Choose evidence targets
 
-For every changed surface, identify:
+For every target surface, identify its canonical/current Stitch reference, reference width/height, explicit breakpoints, and important routes/states/interactions. Test below, at, and above important breakpoints when practical; do not substitute framework defaults.
 
-- the canonical/current Stitch reference;
-- its reference width/height when available;
-- explicit responsive breakpoints;
-- important routes/states/interactions that must be exercised.
+Run the project's normal dev/preview command. Confirm the requested route actually rendered: a login redirect, loading skeleton, or failed data load is not evidence of the intended screen. Match reference content/state and let the app become ready using its existing browser/test tooling; a fixed delay is not a readiness guarantee.
 
-For a breakpoint, test immediately below, at, and above it when practical. Do not substitute framework-default widths for explicit design thresholds.
+## 2. Collect deterministic evidence
 
-## 2. Run the app and collect deterministic evidence
-
-Use the project's normal dev/preview command. When Playwright already exists in the target project, run the bundled `scripts/audit-ui.mjs` from this skill directory.
-
-Example:
+Run from the **target application's root**, so its dependencies resolve correctly. `<skill-dir>` is the installed `stitch-to-code` directory, not necessarily a `skills/` folder in the application.
 
 ```bash
 node <skill-dir>/scripts/audit-ui.mjs \
@@ -26,62 +19,44 @@ node <skill-dir>/scripts/audit-ui.mjs \
   --viewports 1440x900,768x1024,390x844
 ```
 
-By default screenshots match the requested viewport dimensions. Use full-page capture only when the whole scrollable document is itself useful evidence.
-
-Optional flags:
+Screenshots match the requested viewport dimensions in CSS pixels by default. Animations/transitions are disabled and the caret hidden during capture, not throughout interaction testing. Full-page capture is optional.
 
 ```text
---output <dir>                 Write evidence to a chosen directory instead of an OS temp directory.
---timeout <ms>                Navigation/action timeout (default: 15000).
---settle-ms <ms>              Extra settle time after load (default: 300).
---storage-state <file>        Reuse an existing Playwright storage-state JSON for authenticated routes.
---full-page                   Capture full-page screenshots instead of viewport screenshots.
---fail-on runtime,overflow    Exit non-zero for selected finding classes.
---fail-on all                 Also fail on HTTP/network and axe accessibility findings.
+--output <dir>                Evidence directory (default: OS temporary directory).
+--timeout <ms>                Per-operation deadline (default: 15000), not a whole-run budget.
+--settle-ms <ms>              Extra delay after load (default: 300).
+--storage-state <file>        Existing Playwright storage-state JSON for authenticated routes.
+--full-page                  Capture the whole scrollable document.
+--fail-on runtime,overflow   Fail on selected findings; network and a11y are also supported.
+--fail-on all                Require axe-core and fail on any supported finding class.
 ```
 
-Treat a storage-state file as sensitive because it can contain cookies or tokens. The audit uses it as Playwright input and does not copy it into the evidence directory or report its path.
+The script uses existing Playwright (`playwright` or `@playwright/test`) and optional `axe-core`; it installs nothing. Its standalone browser does not inherit the project's Playwright config or login fixtures. Use existing project tooling when that setup is necessary.
 
-The audit records per route/viewport:
+Treat storage state as sensitive: never commit it or copy it into evidence. The helper reads it without exporting its contents or path. Screenshots, console messages, HTML excerpts, and URLs can themselves contain sensitive data; inspect/redact evidence before sharing. Use only authorized targets and test accounts.
 
-- screenshot with animations/transitions disabled for capture stability;
-- console errors and uncaught page errors;
-- failed requests and HTTP 4xx/5xx responses;
-- **document overflow** as the global horizontal-overflow finding used by `--fail-on overflow`;
-- offscreen elements separately as diagnostic evidence rather than automatic failures;
-- computed font-family/weight usage and loaded font resource URLs;
-- `document.fonts` readiness/check evidence;
-- axe violations when `axe-core` is already installed.
+The report records screenshots, console/page errors, failed requests and HTTP error responses, and document-level horizontal overflow. Offscreen elements are diagnostic only: they do not independently fail `--fail-on overflow`. Font evidence includes computed CSS stacks, FontFaceSet entries/status, checks, and resource URLs. **These do not prove which font rendered each glyph.** Confirm actual rendered fonts with browser developer tools when fidelity is in doubt; a successful `document.fonts.check()` can still involve fallback.
 
-The script does **not** install Playwright or axe. If they are unavailable, use the repository's existing browser/test tooling and state what could not be collected.
+Axe runs only when installed. Missing optional axe is reported as skipped; explicitly requesting `--fail-on a11y` or `all` without it returns an error. A failed axe run is reported separately from detected violations.
+
+Exit codes: **0** means evidence was collected without a selected failure; **1** means selected findings; **2** means invalid setup or incomplete required evidence. Navigation, DOM, font-readiness, or screenshot collection failures return 2 even without `--fail-on`. A successful exit is not a visual-fidelity or accessibility certificate. Review the report and screenshots.
 
 ## 3. Compare the rendered result with Stitch
 
-Inspect screenshots at the actual reference widths. Check visual primitives and component anatomy before chasing small spacing differences:
+Check actual typography and icon family/glyph/state; authoritative tokens, spacing, radii, assets, and density; shared shells/components; content hierarchy and responsive transformations; and content-driven dialog/drawer sizing and scroll behavior.
 
-- font family/weight and icon family/glyph/state;
-- key tokens/colors, spacing, radii, assets, and density;
-- shared shell/navigation/header/component consistency;
-- content hierarchy and responsive transformation;
-- dialogs/drawers/popovers for realistic content-driven sizing and scrolling.
-
-A local screenshot mismatch does not automatically win over a higher-priority `DESIGN.md` token or canonical repeated pattern; use the reconciliation hierarchy.
+A local screenshot mismatch does not override a higher-priority design token or canonical pattern. Use the hierarchy in `SKILL.md`. The helper collects evidence; it does not perform a semantic comparison with Stitch or verify interactions.
 
 ## 4. Exercise behavior and accessibility
 
-Manually or with the project's tests, exercise visible actions and important states:
+With the project's tests or browser tools, exercise navigation, search/filter/pagination, forms, and loading/empty/error/denied/success states. Check keyboard order, focus visibility, labels and accessible names, headings/landmarks, dialog focus trap/restoration/Escape, zoom/long text, truncation, and information preserved between wide and compact layouts.
 
-- navigation, search/filter/pagination, forms, mutations, errors, loading, empty, denied, and success states as applicable;
-- keyboard order, visible focus, accessible names/labels, headings/landmarks, dialog focus trap/restore/Escape behavior;
-- zoom/long text and critical truncation;
-- information preserved between wide and compact layouts.
+Test mutations only in an explicitly safe test environment; an audit is not permission to export sensitive data, submit payments, or delete production records. Otherwise mark those interactions untested. Check animations normally outside stabilized screenshot capture. Follow the fidelity/accessibility conflict rule in `SKILL.md`; audits recommend changes without applying them.
 
-Do not silently alter explicit visual tokens for accessibility. Follow the fidelity/accessibility rule in `SKILL.md`.
+## 5. Run repository checks and report
 
-## 5. Run repository checks
+Run appropriate typecheck, lint, tests, build/export, and existing visual/accessibility checks without auto-fix during audit. Record what actually ran, failures, and skips. Separate source conflicts, product defects, and unavailable tooling.
 
-Run the relevant typecheck, lint, tests, build/export, and any existing visual/a11y suites. Treat new failures introduced by the implementation as unresolved until fixed or explicitly explained.
+For each audit finding, include the surface, expected vs observed behavior, impact, and evidence (screenshot, report entry, source path, or reproduction). Do not claim a clean bill of health from missing evidence.
 
-## Evidence gate
-
-QA is complete only when every changed surface has browser evidence at the relevant widths, important interactions/states were exercised, unexplained runtime/document-overflow/font/asset failures are absent, and remaining deviations are explicitly documented in the handoff.
+Implementation/sync validation passes when required evidence and interaction checks are complete, no unexplained failures remain, and deviations are explicit. An audit completes with an evidence-backed report, even if defects remain; missing checks must still be labelled incomplete.

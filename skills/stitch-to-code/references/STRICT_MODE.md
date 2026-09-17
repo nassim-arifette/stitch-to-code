@@ -56,25 +56,21 @@ Do not create parallel Button/Header/Card/Modal/Pagination families just because
 
 The Python helpers validate **Stitch to Code-owned Strict state**. They do not reimplement Google's `DESIGN.md` specification.
 
-Initialize Strict files:
+Run from the target repository; `<skill-dir>` is the installed `stitch-to-code` directory. Initialize Strict files:
 
 ```bash
-python skills/stitch-to-code/scripts/init_project.py --root . --mode strict
+python <skill-dir>/scripts/init_project.py --root . --mode strict
 ```
 
 Validate Strict tracking state:
 
 ```bash
-python skills/stitch-to-code/scripts/validate_project.py --root .
+python <skill-dir>/scripts/validate_project.py --root .
 ```
 
 The validator checks things such as incomplete Strict state, duplicate IDs, broken/cyclic `supersededBy` chains, missing tracked artifacts, hashes, and unresolved Strict template placeholders.
 
-Validate the Stitch/Google design file separately with the official linter when available:
-
-```bash
-npx @google/design.md lint .stitch/DESIGN.md
-```
+Validate the design file separately following the existing-tool linter rule in `SKILL.md`; these helpers do not validate Google's format or install its linter.
 
 Browser evidence is independent of Strict mode. Use `scripts/audit-ui.mjs` in both Lite and Strict when Playwright is already available in the target project.
 

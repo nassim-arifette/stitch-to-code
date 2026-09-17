@@ -1,68 +1,54 @@
-# Reconciliation guide
+# Reconciliation examples
 
-Use this reference when multiple Stitch screens, `DESIGN.md`, and the existing product disagree. The goal is not to make every screen identical; it is to decide which differences are intentional and which are drift.
+Use these examples when Stitch screens, `DESIGN.md`, and the product disagree. The source hierarchies and decision rules live in `SKILL.md`; this reference illustrates them rather than defining another algorithm.
 
 ## Working map
 
-Keep this as temporary working state in Lite mode:
+When `SKILL.md` calls for a map, keep it as temporary working state in Lite mode. Do not create one for a straightforward single-screen task just because this example exists.
 
 | Surface | Canonical shell | Shared patterns | Local exceptions | Mock-only / unsupported | Responsive state |
 | --- | --- | --- | --- | --- | --- |
 | `/orders` | App shell A | page header, filters, table | bulk-select toolbar | export KPI | wide table / compact cards |
 | `/orders/:id` | App shell A | page header, status badge | detail summary | demo notification | stacked below 720px |
 
-A useful map is small but complete enough that every target surface has a row and every visible contradiction has a classification.
+A useful map has a row for every target surface and a decision for each meaningful contradiction. In audit mode these are review decisions, not permission to modify the implementation.
 
-## Conflict algorithm
+## Structured token vs one screenshot
 
-1. Identify the exact property or behavior that conflicts.
-2. Decide whether the conflict is visual or behavioral; use the matching source-of-truth hierarchy from `SKILL.md`.
-3. Check whether one screen is explicitly newer/canonical or whether the pattern repeats across several screens.
-4. Classify the difference as intentional variant, product requirement, responsive state, mock-only content, or isolated drift.
-5. Record the decision in the temporary map, then implement one coherent pattern.
+`DESIGN.md` explicitly defines a 12px card radius. Four screens use 12px; one screenshot appears closer to 16px.
 
-Do not resolve a conflict by averaging values or inventing a third pattern unless the user/product requirement explicitly calls for a new one.
+**Decision:** use 12px. The structured token and repeated pattern outrank the isolated anomaly. Do not average the values into a third pattern.
 
-## Worked examples
+## Existing component is close but not exact
 
-### Structured token vs one screenshot
+The repository already has a reusable `Button`, but its radius and icon family differ from the current design.
 
-`DESIGN.md` defines `rounded.card: 12px`. Four screens use 12px; one screenshot appears closer to 16px.
+**Decision:** reuse/adapt it if it can satisfy the authoritative design without breaking unrelated consumers. If a variant is necessary, add the smallest coherent variant rather than a parallel button family.
 
-**Decision:** use 12px. The structured token and repeated pattern outrank the isolated screenshot anomaly.
+## Unsupported control in an existing product
 
-### Existing component is close but not exact
+A screen shows an “Export CSV” button, but there is no route, permission, API, test, or working export behavior, and the task does not request a new export feature.
 
-The repository already has a reusable `Button`, but its radius and icon family differ from the current Stitch design.
+**Decision:** remove or recast the affordance instead of shipping an inert/fake export. A prototype may implement a real client-side download of local mock data if that fits its scope; do not imply backend permissions or persistence. A separately requested production export needs its own real implementation, not a fake success response.
 
-**Decision:** reuse/adapt the component if it can satisfy the higher-priority design source without breaking unrelated consumers. If a safe variant is needed, add the smallest coherent variant rather than creating a parallel button family.
+## Visual sync must not rewrite working behavior
 
-### Unsupported control in an existing product
+A new screen changes a destructive action's placement and styling. The app already has a permission check, confirmation, mutation, error handling, and audit event.
 
-A Stitch screen shows an “Export CSV” button, but there is no route, permission, API, test, or working export behavior.
+**Decision:** preserve the working behavior and safeguards. Sync its presentation unless an authoritative requirement explicitly changes the contract.
 
-**Decision:** in existing-product mode, remove or recast the affordance instead of shipping an inert/fake export. In prototype mode, a client-only export may be implemented if the prototype intent justifies it, but it must not imply server-side persistence or permissions.
+## Responsive disagreement
 
-### Visual sync must not rewrite working behavior
+A desktop screen has a sidebar, a compact screen has bottom navigation, and an intermediate screenshot shows both accidentally.
 
-A new Stitch screen changes the placement and styling of a destructive action. The existing app already has a permission check, confirmation flow, mutation, error handling, and audit event.
+**Decision:** derive the intended transition from current design material. Treat the isolated duplication as drift unless it is explicitly an intermediate state. Validate around the actual breakpoint.
 
-**Decision:** keep the working behavior and product safeguards. Sync the presentation around them unless the user/product spec explicitly changes the interaction contract.
+## Accessibility conflicts with an explicit token
 
-### Responsive disagreement
+An explicit foreground/background pair fails the project's required contrast threshold.
 
-A desktop screen uses a sidebar, a compact screen uses bottom navigation, and an intermediate screenshot accidentally shows both.
+**Decision:** follow the fidelity/accessibility rule in `SKILL.md`. For implementation with an explicit compliance requirement, apply the minimum necessary deviation and report it. Without that requirement, preserve the source and flag the conflict. During audit, report the proposed resolution without editing.
 
-**Decision:** identify the intended transition from current design material/repeated patterns. Treat the one-off double navigation as drift unless explicitly defined as an intermediate state. Validate immediately below, at, and above the chosen breakpoint.
+## Intentional exceptions
 
-### Accessibility conflicts with an explicit visual token
-
-A current explicit foreground/background token pair fails the project's required contrast threshold.
-
-**Decision:** if accessibility/compliance is an explicit project requirement, make the minimum necessary token/application deviation and record it. Otherwise preserve the explicit source and flag the conflict; do not silently “improve” the design and lose source fidelity.
-
-## What should remain an exception
-
-Keep a local variant when the difference is explained by product meaning, state, platform, or responsive behavior. Examples include destructive vs primary actions, authenticated vs public shells, read-only permission states, and mobile information hierarchy.
-
-Do not promote a one-off generated inconsistency into a reusable component API merely because it appears in one Stitch screen.
+Keep variants justified by product meaning, state, platform, or responsive behavior: destructive vs primary actions, authenticated vs public shells, read-only permissions, and mobile information hierarchy. A one-off generated inconsistency alone is not grounds for a new component API.

@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
 import { createRequire } from 'node:module';
+import { pathToFileURL } from 'node:url';
 
 function usage() {
   return `Usage:
@@ -13,18 +14,21 @@ function usage() {
 Options:
   --routes <csv>         Routes or absolute URLs (default: /)
   --viewports <csv>      Viewports as WIDTHxHEIGHT (default: 1440x900)
-  --output <dir>         Evidence directory (default: OS temp directory)
-  --timeout <ms>         Navigation/action timeout (default: 15000)
+  --output <dir>       Evidence directory (default: OS temp directory)
+  --timeout <ms>         Per-operation timeout (default: 15000)
   --settle-ms <ms>       Extra delay after load (default: 300)
   --storage-state <file> Existing Playwright storage-state JSON
   --full-page            Capture full-page instead of viewport screenshots
   --fail-on <csv>        Finding classes that make exit non-zero:
                          runtime,network,overflow,a11y,all
   --help                 Show this help
+
+Exit: 0 = evidence collected, 1 = selected findings, 2 = invalid/incomplete audit.
+No exit code certifies visual fidelity or complete accessibility.
 `;
 }
 
-function parseArgs(argv) {
+export function parseArgs(argv) {
   const args = {
     routes: ['/'],
     viewports: [{ width: 1440, height: 900 }],
@@ -88,6 +92,10 @@ function parseArgs(argv) {
     throw new Error('--viewports must contain at least one viewport');
   }
 
+  if (!args.help) {
+    args.url = resolveTarget(args.url, args.url);
+    args.routes.forEach((route) => resolveTarget(args.url, route));
+  }
   return args;
 }
 
@@ -98,24 +106,24 @@ function parseViewport(value) {
   }
   const width = Number(match[1]);
   const height = Number(match[2]);
-  if (width < 200 || height < 200) {
-    throw new Error(`Viewport '${value}' is unexpectedly small.`);
+  if (![width, height].every((n) => Number.isSafeInteger(n) && n >= 200 && n <= 16384)) {
+    throw new Error(`Viewport '${value}' must have dimensions between 200 and 16384 CSS pixels.`);
   }
   return { width, height };
 }
 
 function parsePositiveInteger(value, flag) {
   const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed <= 0) {
-    throw new Error(`${flag} must be a positive integer`);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0 || parsed > 2147483647) {
+    throw new Error(`${flag} must be an integer between 1 and 2147483647`);
   }
   return parsed;
 }
 
 function parseNonNegativeInteger(value, flag) {
   const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed < 0) {
-    throw new Error(`${flag} must be a non-negative integer`);
+  if (!Number.isSafeInteger(parsed) || parsed < 0 || parsed > 2147483647) {
+    throw new Error(`${flag} must be an integer between 0 and 2147483647`);
   }
   return parsed;
 }
@@ -139,12 +147,32 @@ function loadPlaywright() {
   return null;
 }
 
-function resolveTarget(baseUrl, route) {
+export function resolveTarget(baseUrl, route) {
+  let url;
   try {
-    return new URL(route).toString();
-  } catch {
     const normalizedBase = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
-    return new URL(route, normalizedBase).toString();
+    url = new URL(route, normalizedBase);
+  } catch {
+    throw new Error('Invalid --url or --routes URL');
+  }
+  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) {
+    throw new Error('Audit URLs must use HTTP(S) without embedded credentials');
+  }
+  return url.toString();
+}
+
+// page.evaluate() does not inherit Playwright's action timeout.
+export async function withTimeout(promise, timeout, label) {
+  let timer;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeout}ms`)), timeout);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -156,16 +184,18 @@ function safeFilePart(value) {
     .slice(0, 120) || 'root';
 }
 
-function screenshotOptions(args, screenshotPath) {
+export function screenshotOptions(args, screenshotPath) {
   return {
     path: screenshotPath,
     fullPage: args.fullPage,
     animations: 'disabled',
     caret: 'hide',
+    scale: 'css',
+    timeout: args.timeout,
   };
 }
 
-async function collectDomEvidence(page) {
+export async function collectDomEvidence(page) {
   return page.evaluate(() => {
     const doc = document.documentElement;
     const body = document.body;
@@ -238,6 +268,10 @@ async function collectDomEvidence(page) {
       },
       fonts: {
         status: document.fonts?.status ?? 'unsupported',
+        faces: Array.from(document.fonts ?? []).map((face) => ({
+          family: face.family, weight: face.weight, style: face.style, status: face.status,
+        })),
+        // Neither CSS stacks nor FontFaceSet.check() identify the face used for each glyph.
         computedUsage: Array.from(fontUsage.entries())
           .sort((a, b) => b[1] - a[1])
           .slice(0, 30)
@@ -249,14 +283,14 @@ async function collectDomEvidence(page) {
   });
 }
 
-async function collectAxe(page, axeCore) {
+async function collectAxe(page, axeCore, timeout) {
   if (!axeCore?.source) {
     return { available: false, error: null, violations: [] };
   }
 
   try {
-    await page.addScriptTag({ content: axeCore.source });
-    const result = await page.evaluate(async () => {
+    await withTimeout(page.addScriptTag({ content: axeCore.source }), timeout, 'axe injection');
+    const result = await withTimeout(page.evaluate(async () => {
       const output = await window.axe.run(document, {
         resultTypes: ['violations'],
       });
@@ -271,7 +305,7 @@ async function collectAxe(page, axeCore) {
           failureSummary: node.failureSummary,
         })),
       }));
-    });
+    }), timeout, 'axe analysis');
 
     return { available: true, error: null, violations: result };
   } catch (error) {
@@ -279,7 +313,7 @@ async function collectAxe(page, axeCore) {
   }
 }
 
-function shouldFail(failOn, findings) {
+export function shouldFail(failOn, findings) {
   if (failOn.has('all')) {
     return findings.runtime || findings.network || findings.overflow || findings.a11y;
   }
@@ -291,10 +325,10 @@ function shouldFail(failOn, findings) {
   );
 }
 
-async function main() {
+export async function main(argv = process.argv.slice(2)) {
   let args;
   try {
-    args = parseArgs(process.argv.slice(2));
+    args = parseArgs(argv);
   } catch (error) {
     console.error(`ERROR ${error.message}`);
     console.error(usage());
@@ -313,17 +347,26 @@ async function main() {
     return 2;
   }
 
-  const storageStatePath = args.storageState ? path.resolve(args.storageState) : null;
-  if (storageStatePath) {
+  let storageState;
+  if (args.storageState) {
     try {
-      await fs.access(storageStatePath);
+      storageState = JSON.parse(await fs.readFile(path.resolve(args.storageState), 'utf8'));
+      if (!storageState || !Array.isArray(storageState.cookies) || !Array.isArray(storageState.origins)) {
+        throw new Error('Invalid shape');
+      }
     } catch {
-      console.error(`ERROR Storage state file does not exist or is not readable: ${storageStatePath}`);
+      // JSON parse errors can echo cookies/tokens. Never print the input or parse error.
+      console.error('ERROR --storage-state must be readable JSON with cookies and origins arrays');
       return 2;
     }
   }
 
   const axeCore = loadProjectModule('axe-core');
+  const requireAxe = args.failOn.has('a11y') || args.failOn.has('all');
+  if (requireAxe && !axeCore?.source) {
+    console.error('ERROR --fail-on a11y/all requires an existing axe-core installation; no audit was run');
+    return 2;
+  }
   const outputDir = args.output
     ? path.resolve(args.output)
     : await fs.mkdtemp(path.join(os.tmpdir(), 'stitch-to-code-audit-'));
@@ -336,7 +379,7 @@ async function main() {
     routes: args.routes,
     viewports: args.viewports,
     screenshotMode: args.fullPage ? 'full-page' : 'viewport',
-    storageStateUsed: Boolean(storageStatePath),
+    storageStateUsed: Boolean(storageState),
     axeAvailable: Boolean(axeCore?.source),
     outputDir,
     targets: [],
@@ -349,17 +392,27 @@ async function main() {
       axeViolations: 0,
       axeErrors: 0,
       navigationFailures: 0,
+      collectionFailures: 0,
     },
   };
 
-  const browser = await playwright.chromium.launch({ headless: true });
+  let browser;
   let exitCode = 0;
 
   try {
+    browser = await playwright.chromium.launch({ headless: true, timeout: args.timeout });
     for (const viewport of args.viewports) {
       const contextOptions = { viewport };
-      if (storageStatePath) contextOptions.storageState = storageStatePath;
-      const context = await browser.newContext(contextOptions);
+      if (storageState) contextOptions.storageState = storageState;
+      let context;
+      try {
+        context = await browser.newContext(contextOptions);
+      } catch (error) {
+        if (storageState) throw new Error('Cannot create authenticated browser context; check storage-state schema and browser compatibility');
+        throw error;
+      }
+      context.setDefaultTimeout(args.timeout);
+      context.setDefaultNavigationTimeout(args.timeout);
 
       for (const route of args.routes) {
         const page = await context.newPage();
@@ -397,10 +450,13 @@ async function main() {
           }
         });
 
-        const targetName = `${safeFilePart(targetUrl)}-${viewport.width}x${viewport.height}`;
+        const targetName = `${String(report.targets.length + 1).padStart(3, '0')}-${safeFilePart(targetUrl)}-${viewport.width}x${viewport.height}`;
         const screenshotPath = path.join(outputDir, `${targetName}.png`);
         const startedAt = Date.now();
         let navigationError = null;
+        let collectionError = null;
+        let screenshot = null;
+        let stage = 'navigation';
         let domEvidence = null;
         let axe = { available: Boolean(axeCore?.source), error: null, violations: [] };
 
@@ -412,19 +468,31 @@ async function main() {
             // Many real apps keep connections open. DOM evidence is still useful.
           }
           if (args.settleMs > 0) await page.waitForTimeout(args.settleMs);
-          await page.evaluate(async () => {
+          stage = 'fonts';
+          await withTimeout(page.evaluate(async () => {
             if (document.fonts?.ready) await document.fonts.ready;
             return true;
-          });
+          }), args.timeout, 'Font readiness');
 
-          domEvidence = await collectDomEvidence(page);
-          axe = await collectAxe(page, axeCore);
+          stage = 'dom';
+          domEvidence = await withTimeout(collectDomEvidence(page), args.timeout, 'DOM evidence');
+          stage = 'a11y';
+          axe = await collectAxe(page, axeCore, args.timeout);
+          if (requireAxe && axe.error) exitCode = 2;
+          stage = 'screenshot';
           await page.screenshot(screenshotOptions(args, screenshotPath));
+          screenshot = screenshotPath;
         } catch (error) {
-          navigationError = { message: error.message, stack: error.stack || null };
-          report.summary.navigationFailures += 1;
+          collectionError = { stage, message: error.message };
+          if (stage === 'navigation') {
+            navigationError = collectionError;
+            report.summary.navigationFailures += 1;
+          }
+          report.summary.collectionFailures += 1;
+          exitCode = 2; // An incomplete capture must never look like a successful audit.
           try {
             await page.screenshot(screenshotOptions(args, screenshotPath));
+            screenshot = screenshotPath;
           } catch {
             // No screenshot possible after a hard browser failure.
           }
@@ -433,13 +501,13 @@ async function main() {
         const durationMs = Date.now() - startedAt;
         const documentOverflow = Boolean(domEvidence?.overflow?.documentOverflow);
         const findings = {
-          runtime: Boolean(consoleErrors.length || pageErrors.length || navigationError),
+          runtime: Boolean(consoleErrors.length || pageErrors.length || collectionError),
           network: Boolean(requestFailures.length || httpErrors.length),
           overflow: documentOverflow,
           a11y: Boolean(axe.violations.length || axe.error),
         };
 
-        if (shouldFail(args.failOn, findings)) exitCode = 1;
+        if (shouldFail(args.failOn, findings)) exitCode = Math.max(exitCode, 1);
 
         report.summary.consoleErrors += consoleErrors.length;
         report.summary.pageErrors += pageErrors.length;
@@ -454,7 +522,8 @@ async function main() {
           url: targetUrl,
           viewport,
           durationMs,
-          screenshot: screenshotPath,
+          screenshot,
+          collectionError,
           navigationError,
           consoleErrors,
           consoleWarnings,
@@ -467,21 +536,36 @@ async function main() {
         });
 
         const findingNames = Object.entries(findings).filter(([, value]) => value).map(([key]) => key);
-        console.log(`${findingNames.length ? 'WARN' : 'PASS'} ${targetUrl} @ ${viewport.width}x${viewport.height}${findingNames.length ? ` [${findingNames.join(', ')}]` : ''}`);
+        console.log(`${collectionError ? 'INCOMPLETE' : findingNames.length ? 'WARN' : 'COLLECTED'} ${targetUrl} @ ${viewport.width}x${viewport.height}${findingNames.length ? ` [${findingNames.join(', ')}]` : ''}`);
         await page.close();
       }
 
       await context.close();
     }
+  } catch (error) {
+    report.fatalError = { message: error.message };
+    console.error(`ERROR ${error.message}`);
+    exitCode = 2;
   } finally {
-    await browser.close();
+    if (browser) {
+      try { await browser.close(); } catch (error) {
+        report.cleanupError = { message: error.message };
+        exitCode = 2;
+      }
+    }
   }
 
   const reportPath = path.join(outputDir, 'audit-ui-report.json');
   await fs.writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
   console.log(`REPORT ${reportPath}`);
+  if (!axeCore?.source) console.log('INFO axe accessibility check skipped (axe-core unavailable)');
 
   return exitCode;
 }
 
-process.exitCode = await main();
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+  try { process.exitCode = await main(); } catch (error) {
+    console.error(`ERROR ${error.message}`);
+    process.exitCode = 2;
+  }
+}
