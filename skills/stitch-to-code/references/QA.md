@@ -26,22 +26,29 @@ node <skill-dir>/scripts/audit-ui.mjs \
   --viewports 1440x900,768x1024,390x844
 ```
 
+By default screenshots match the requested viewport dimensions. Use full-page capture only when the whole scrollable document is itself useful evidence.
+
 Optional flags:
 
 ```text
 --output <dir>                 Write evidence to a chosen directory instead of an OS temp directory.
 --timeout <ms>                Navigation/action timeout (default: 15000).
 --settle-ms <ms>              Extra settle time after load (default: 300).
+--storage-state <file>        Reuse an existing Playwright storage-state JSON for authenticated routes.
+--full-page                   Capture full-page screenshots instead of viewport screenshots.
 --fail-on runtime,overflow    Exit non-zero for selected finding classes.
 --fail-on all                 Also fail on HTTP/network and axe accessibility findings.
 ```
 
+Treat a storage-state file as sensitive because it can contain cookies or tokens. The audit uses it as Playwright input and does not copy it into the evidence directory or report its path.
+
 The audit records per route/viewport:
 
-- screenshot;
+- screenshot with animations/transitions disabled for capture stability;
 - console errors and uncaught page errors;
 - failed requests and HTTP 4xx/5xx responses;
-- document/body horizontal overflow and likely overflowing elements;
+- **document overflow** as the global horizontal-overflow finding used by `--fail-on overflow`;
+- offscreen elements separately as diagnostic evidence rather than automatic failures;
 - computed font-family/weight usage and loaded font resource URLs;
 - `document.fonts` readiness/check evidence;
 - axe violations when `axe-core` is already installed.
@@ -77,4 +84,4 @@ Run the relevant typecheck, lint, tests, build/export, and any existing visual/a
 
 ## Evidence gate
 
-QA is complete only when every changed surface has browser evidence at the relevant widths, important interactions/states were exercised, unexplained runtime/overflow/font/asset failures are absent, and remaining deviations are explicitly documented in the handoff.
+QA is complete only when every changed surface has browser evidence at the relevant widths, important interactions/states were exercised, unexplained runtime/document-overflow/font/asset failures are absent, and remaining deviations are explicitly documented in the handoff.
