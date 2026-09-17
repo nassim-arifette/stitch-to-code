@@ -11,14 +11,16 @@ function usage() {
   node audit-ui.mjs --url <baseUrl> [options]
 
 Options:
-  --routes <csv>       Routes or absolute URLs (default: /)
-  --viewports <csv>    Viewports as WIDTHxHEIGHT (default: 1440x900)
-  --output <dir>       Evidence directory (default: OS temp directory)
-  --timeout <ms>       Navigation/action timeout (default: 15000)
-  --settle-ms <ms>     Extra delay after load (default: 300)
-  --fail-on <csv>      Finding classes that make exit non-zero:
-                       runtime,network,overflow,a11y,all
-  --help               Show this help
+  --routes <csv>         Routes or absolute URLs (default: /)
+  --viewports <csv>      Viewports as WIDTHxHEIGHT (default: 1440x900)
+  --output <dir>         Evidence directory (default: OS temp directory)
+  --timeout <ms>         Navigation/action timeout (default: 15000)
+  --settle-ms <ms>       Extra delay after load (default: 300)
+  --storage-state <file> Existing Playwright storage-state JSON
+  --full-page            Capture full-page instead of viewport screenshots
+  --fail-on <csv>        Finding classes that make exit non-zero:
+                         runtime,network,overflow,a11y,all
+  --help                 Show this help
 `;
 }
 
@@ -29,6 +31,8 @@ function parseArgs(argv) {
     output: null,
     timeout: 15000,
     settleMs: 300,
+    storageState: null,
+    fullPage: false,
     failOn: new Set(),
   };
 
@@ -57,6 +61,10 @@ function parseArgs(argv) {
       args.timeout = parsePositiveInteger(next(), '--timeout');
     } else if (arg === '--settle-ms') {
       args.settleMs = parseNonNegativeInteger(next(), '--settle-ms');
+    } else if (arg === '--storage-state') {
+      args.storageState = next();
+    } else if (arg === '--full-page') {
+      args.fullPage = true;
     } else if (arg === '--fail-on') {
       const values = next().split(',').map((value) => value.trim()).filter(Boolean);
       for (const value of values) {
@@ -148,6 +156,15 @@ function safeFilePart(value) {
     .slice(0, 120) || 'root';
 }
 
+function screenshotOptions(args, screenshotPath) {
+  return {
+    path: screenshotPath,
+    fullPage: args.fullPage,
+    animations: 'disabled',
+    caret: 'hide',
+  };
+}
+
 async function collectDomEvidence(page) {
   return page.evaluate(() => {
     const doc = document.documentElement;
@@ -155,8 +172,9 @@ async function collectDomEvidence(page) {
     const viewportWidth = doc.clientWidth;
     const maxScrollWidth = Math.max(doc.scrollWidth, body?.scrollWidth ?? 0);
     const overflowPixels = Math.max(0, maxScrollWidth - viewportWidth);
+    const documentOverflow = overflowPixels > 1;
 
-    const overflowers = [];
+    const offscreenElements = [];
     const fontUsage = new Map();
     const fontFamilies = new Set();
 
@@ -176,8 +194,8 @@ async function collectDomEvidence(page) {
         });
       }
 
-      if (overflowers.length < 40 && (rect.right > viewportWidth + 1 || rect.left < -1)) {
-        overflowers.push({
+      if (offscreenElements.length < 40 && (rect.right > viewportWidth + 1 || rect.left < -1)) {
+        offscreenElements.push({
           tag: element.tagName.toLowerCase(),
           id: element.id || null,
           classes: Array.from(element.classList).slice(0, 4),
@@ -212,10 +230,11 @@ async function collectDomEvidence(page) {
         url: location.href,
       },
       overflow: {
+        documentOverflow,
         viewportWidth,
         maxScrollWidth,
         overflowPixels,
-        likelyOffenders: overflowers,
+        offscreenElements,
       },
       fonts: {
         status: document.fonts?.status ?? 'unsupported',
@@ -294,6 +313,16 @@ async function main() {
     return 2;
   }
 
+  const storageStatePath = args.storageState ? path.resolve(args.storageState) : null;
+  if (storageStatePath) {
+    try {
+      await fs.access(storageStatePath);
+    } catch {
+      console.error(`ERROR Storage state file does not exist or is not readable: ${storageStatePath}`);
+      return 2;
+    }
+  }
+
   const axeCore = loadProjectModule('axe-core');
   const outputDir = args.output
     ? path.resolve(args.output)
@@ -306,6 +335,8 @@ async function main() {
     baseUrl: args.url,
     routes: args.routes,
     viewports: args.viewports,
+    screenshotMode: args.fullPage ? 'full-page' : 'viewport',
+    storageStateUsed: Boolean(storageStatePath),
     axeAvailable: Boolean(axeCore?.source),
     outputDir,
     targets: [],
@@ -314,7 +345,7 @@ async function main() {
       pageErrors: 0,
       requestFailures: 0,
       httpErrors: 0,
-      overflowTargets: 0,
+      documentOverflowTargets: 0,
       axeViolations: 0,
       axeErrors: 0,
       navigationFailures: 0,
@@ -326,7 +357,9 @@ async function main() {
 
   try {
     for (const viewport of args.viewports) {
-      const context = await browser.newContext({ viewport });
+      const contextOptions = { viewport };
+      if (storageStatePath) contextOptions.storageState = storageStatePath;
+      const context = await browser.newContext(contextOptions);
 
       for (const route of args.routes) {
         const page = await context.newPage();
@@ -386,23 +419,23 @@ async function main() {
 
           domEvidence = await collectDomEvidence(page);
           axe = await collectAxe(page, axeCore);
-          await page.screenshot({ path: screenshotPath, fullPage: true });
+          await page.screenshot(screenshotOptions(args, screenshotPath));
         } catch (error) {
           navigationError = { message: error.message, stack: error.stack || null };
           report.summary.navigationFailures += 1;
           try {
-            await page.screenshot({ path: screenshotPath, fullPage: true });
+            await page.screenshot(screenshotOptions(args, screenshotPath));
           } catch {
             // No screenshot possible after a hard browser failure.
           }
         }
 
         const durationMs = Date.now() - startedAt;
-        const overflow = Boolean(domEvidence?.overflow?.overflowPixels > 1 || domEvidence?.overflow?.likelyOffenders?.length);
+        const documentOverflow = Boolean(domEvidence?.overflow?.documentOverflow);
         const findings = {
           runtime: Boolean(consoleErrors.length || pageErrors.length || navigationError),
           network: Boolean(requestFailures.length || httpErrors.length),
-          overflow,
+          overflow: documentOverflow,
           a11y: Boolean(axe.violations.length || axe.error),
         };
 
@@ -412,7 +445,7 @@ async function main() {
         report.summary.pageErrors += pageErrors.length;
         report.summary.requestFailures += requestFailures.length;
         report.summary.httpErrors += httpErrors.length;
-        report.summary.overflowTargets += overflow ? 1 : 0;
+        report.summary.documentOverflowTargets += documentOverflow ? 1 : 0;
         report.summary.axeViolations += axe.violations.length;
         report.summary.axeErrors += axe.error ? 1 : 0;
 
