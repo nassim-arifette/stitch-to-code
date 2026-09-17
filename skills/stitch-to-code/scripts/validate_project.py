@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate deterministic Stitch to Code invariants using Python stdlib."""
+"""Validate optional Stitch to Code Strict-mode tracking invariants."""
 
 from __future__ import annotations
 
@@ -8,7 +8,6 @@ import hashlib
 import json
 from pathlib import Path
 import re
-import sys
 from typing import Any
 
 
@@ -48,7 +47,6 @@ def load_json(path: Path, errors: list[str]) -> dict[str, Any] | None:
 
 def check_placeholders(root: Path, allow: bool, errors: list[str], warnings: list[str]) -> None:
     candidates = [
-        root / ".stitch" / "DESIGN.md",
         root / ".stitch" / "metadata.json",
         root / "docs" / "ui" / "UI_PATTERNS.md",
         root / "docs" / "ui" / "UI_SURFACES.md",
@@ -190,44 +188,15 @@ def check_metadata(root: Path, data: dict[str, Any], errors: list[str], warnings
         walk(node, [])
 
 
-
-def check_design(root: Path, errors: list[str], warnings: list[str]) -> None:
-    path = root / ".stitch" / "DESIGN.md"
-    if not path.exists():
-        errors.append(
-            "Missing required Stitch design file: .stitch/DESIGN.md "
-            "(generate/sync it through Stitch or the official Stitch design-md workflow; "
-            "Stitch to Code does not create a replacement)"
-        )
-        return
-
-    text = path.read_text(encoding="utf-8")
-    if not text.startswith("---\n"):
-        warnings.append(
-            ".stitch/DESIGN.md has no YAML frontmatter. Accepted: current official Stitch "
-            "workflows document both prose-only and structured DESIGN.md shapes. Preserve the "
-            "format produced by the workflow you use."
-        )
-        return
-
-    end = text.find("\n---", 4)
-    if end == -1:
-        errors.append(".stitch/DESIGN.md has an unterminated YAML frontmatter block")
-        return
-
-    frontmatter = text[4:end]
-    if not re.search(r"(?m)^name\s*:\s*.+$", frontmatter):
-        errors.append(".stitch/DESIGN.md structured frontmatter is missing required 'name:'")
-    if not re.search(r"(?m)^colors\s*:\s*(?:$|\{)", frontmatter):
-        errors.append(".stitch/DESIGN.md structured frontmatter is missing required 'colors:' mapping")
-
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Validate Stitch to Code project state.")
+    parser = argparse.ArgumentParser(
+        description="Validate optional Stitch to Code Strict-mode tracking state."
+    )
     parser.add_argument("--root", default=".", help="Target repository root.")
     parser.add_argument(
         "--allow-placeholders",
         action="store_true",
-        help="Report unresolved template placeholders as warnings instead of errors.",
+        help="Report unresolved Strict template placeholders as warnings instead of errors.",
     )
     args = parser.parse_args()
 
@@ -235,28 +204,35 @@ def main() -> int:
     errors: list[str] = []
     warnings: list[str] = []
 
-    check_design(root, errors, warnings)
-
     metadata_path = root / ".stitch" / "metadata.json"
     patterns_path = root / "docs" / "ui" / "UI_PATTERNS.md"
     surfaces_path = root / "docs" / "ui" / "UI_SURFACES.md"
-
-    # Lite has no Stitch to Code state. The presence of any Strict-owned file
-    # means Strict tracking has been opted into and must be structurally complete.
     strict_paths = (metadata_path, patterns_path, surfaces_path)
     strict_present = [path for path in strict_paths if path.exists()]
-    if strict_present:
-        for path in strict_paths:
-            if not path.exists():
-                errors.append(
-                    f"Incomplete Strict mode: missing {path.relative_to(root)} "
-                    "while other Strict-mode state exists"
-                )
 
-        if metadata_path.exists():
-            data = load_json(metadata_path, errors)
-            if data is not None:
-                check_metadata(root, data, errors, warnings)
+    if not strict_present:
+        print("PASS: no Strict-mode Stitch to Code state detected; nothing to validate")
+        print("INFO: validate .stitch/DESIGN.md separately with @google/design.md when available")
+        return 0
+
+    design_path = root / ".stitch" / "DESIGN.md"
+    if not design_path.exists():
+        errors.append(
+            "Strict mode expects .stitch/DESIGN.md from the Stitch/DESIGN.md workflow; "
+            "Stitch to Code does not create a replacement"
+        )
+
+    for path in strict_paths:
+        if not path.exists():
+            errors.append(
+                f"Incomplete Strict mode: missing {path.relative_to(root)} "
+                "while other Strict-mode state exists"
+            )
+
+    if metadata_path.exists():
+        data = load_json(metadata_path, errors)
+        if data is not None:
+            check_metadata(root, data, errors, warnings)
 
     check_placeholders(root, args.allow_placeholders, errors, warnings)
 
@@ -270,6 +246,7 @@ def main() -> int:
         return 1
 
     print(f"PASS: 0 errors, {len(warnings)} warning(s)")
+    print("INFO: validate .stitch/DESIGN.md separately with @google/design.md when available")
     return 0
 
 
