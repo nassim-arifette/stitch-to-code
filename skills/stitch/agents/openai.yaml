@@ -1,0 +1,5 @@
+interface:
+  display_name: "Stitch"
+  short_description: "Implement, sync, or audit a Stitch design"
+policy:
+  allow_implicit_invocation: false

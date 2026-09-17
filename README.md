@@ -1,130 +1,201 @@
 # Stitch to Code
+
 [![skills.sh](https://skills.sh/b/nassim-arifette/stitch-to-code)](https://skills.sh/nassim-arifette/stitch-to-code)
 
-Stitch to Code is a small Agent Skill for coding agents like Codex and Claude Code.
+**Turn Google Stitch designs into coherent, working applications.**
 
-I made it because I kept running into the same problem with Google Stitch: individual screens could look good, but once a project had several pages, they did not always feel like the same app anymore. The coding agent would then implement those differences literally, or change things Stitch had already defined clearly, like the font or icon set.
+Stitch can generate great individual screens. A real application is more than a collection of screens.
 
-This got much more noticeable for me on larger projects. The more screens I had, the more these small and large inconsistencies added up. Using the rules behind this skill helped me a lot more than simply handing every Stitch screen to the coding agent and hoping it would reconcile everything by itself.
+Across a project, navigation can drift, shared components can become slightly different, responsive states can disagree, and coding agents can substitute fonts, icons, or behavior that the design never intended.
 
-> Unofficial community project. Not affiliated with or endorsed by Google.
+**Stitch to Code is a design-to-code skill that reconciles those differences before and during implementation.**
 
-## Install
+It helps coding agents turn Stitch designs into one coherent application by preserving deliberate design choices, normalizing accidental drift, reusing shared patterns, grounding interactions in the real product, and validating the rendered result in the browser.
+
+Framework-agnostic. Designed for coding agents such as Codex and Claude Code.
+
+## Installation (30-second setup)
+
+Stitch to Code ships as two skills that work together:
+
+- **`stitch`** — the short, human-invoked entry point for `implement`, `sync`, and `audit`;
+- **`stitch-to-code`** — the model-invoked design-to-code workflow that does the actual reconciliation, implementation, and validation.
+
+Install both. The `stitch` entry point delegates to `stitch-to-code`.
+
+<details open>
+<summary><strong>Codex</strong></summary>
 
 ```bash
-npx skills add nassim-arifette/stitch-to-code
-```
-
-For Codex only:
-
-```bash
-npx skills add nassim-arifette/stitch-to-code \
+npx skills@latest add nassim-arifette/stitch-to-code \
+  --skill stitch \
   --skill stitch-to-code \
-  --agent codex \
-  --copy
+  --agent codex
 ```
 
-For Claude Code only:
-
-```bash
-npx skills add nassim-arifette/stitch-to-code \
-  --skill stitch-to-code \
-  --agent claude-code \
-  --copy
-```
-
-You can also install it manually by copying:
+Then invoke it explicitly with commands such as:
 
 ```text
+$stitch implement
+$stitch sync
+$stitch audit
+```
+
+</details>
+
+<details>
+<summary><strong>Claude Code</strong></summary>
+
+```bash
+npx skills@latest add nassim-arifette/stitch-to-code \
+  --skill stitch \
+  --skill stitch-to-code \
+  --agent claude-code
+```
+
+Then invoke it explicitly with commands such as:
+
+```text
+/stitch implement
+/stitch sync
+/stitch audit
+```
+
+</details>
+
+<details>
+<summary><strong>Other supported agents</strong></summary>
+
+Use the skills installer and select the agent you want to install to:
+
+```bash
+npx skills@latest add nassim-arifette/stitch-to-code \
+  --skill stitch \
+  --skill stitch-to-code
+```
+
+The installer supports many coding agents. Explicit command syntax varies by agent, while `stitch-to-code` can still be used automatically when the agent supports model-invoked skills.
+
+</details>
+
+<details>
+<summary><strong>Manual installation</strong></summary>
+
+Copy both skill folders into your agent's skills directory:
+
+```text
+skills/stitch/
 skills/stitch-to-code/
 ```
 
-into:
+Do not install only `stitch`: it is intentionally a thin entry point and expects `stitch-to-code` to be available.
 
-```text
-# Codex
-.agents/skills/stitch-to-code/
-
-# Claude Code
-.claude/skills/stitch-to-code/
-```
+</details>
 
 ## Use it
 
-For most projects, installing the skill is enough.
+| Task | Claude Code | Codex |
+| --- | --- | --- |
+| Implement a design | `/stitch implement` | `$stitch implement` |
+| Sync a design update | `/stitch sync` | `$stitch sync` |
+| Audit without changing code | `/stitch audit` | `$stitch audit` |
 
-A prompt can be as simple as:
-
-```text
-Implement these Stitch screens using Stitch to Code.
-Use the current Stitch project and DESIGN.md, reconcile inconsistencies across screens,
-and validate the result in the browser.
-```
-
-The skill uses the `DESIGN.md` produced by Stitch. It does not replace it with its own design system.
-
-## What it tries to fix
-
-There are a few problems I kept seeing when moving from Stitch to code.
-
-Screens from the same project can disagree on things like navigation, headers, components, spacing, search placement, breakpoints, or responsive behavior. Sometimes the difference is minor. Sometimes one page looks like it came from a different version of the app.
-
-Coding agents can also drift away from choices Stitch actually made. A project may specify a font, an icon family, exact colors, radii, breakpoints, or assets, and the agent may still substitute whatever it normally uses.
-
-Mockups can also contain things that only exist to make the screen look realistic. A KPI, export button, avatar, notification, or filter should not automatically become a real product feature.
-
-Stitch to Code gives the agent a few rules for dealing with that:
-
-- use the exact font, icons, tokens, spacing, radii, breakpoints, and assets Stitch defines
-- look at related screens together instead of treating each one as an isolated mockup
-- keep intentional differences, but reconcile accidental inconsistencies
-- reuse existing components when they already match the intended pattern
-- check what the app actually supports before turning mockup content into functionality
-- do not leave controls that look interactive but do nothing
-- check keyboard use, focus, semantics, labels, contrast, and responsive behavior in the actual implementation
-- run the app in a real browser before calling the work finished
-
-The skill does not impose a font or icon library of its own. If one Stitch project uses Hanken Grotesk and Material Symbols while another uses Geist and Phosphor, the agent should follow the project it is working on.
-
-## Optional strict mode
-
-Most people do not need this.
-
-The normal workflow does not add metadata files, registries, or Python setup to your project. The agent works from the Stitch references and the repo itself: existing components, routes, product docs, schemas or API clients when relevant, tests, and code.
-
-For larger projects where you actually want explicit tracking, Strict mode can add:
+Add a scope when needed:
 
 ```text
-.stitch/metadata.json
-docs/ui/UI_PATTERNS.md
-docs/ui/UI_SURFACES.md
+/stitch implement dashboard and billing
+/stitch audit /dashboard
 ```
 
-The bundled Python scripts only initialize and validate this optional state. They are not needed for the skill itself.
+Use `$stitch` for the same examples in Codex. With no operation, the skill infers one only when your intent is clear; otherwise it asks.
 
-See [`STRICT_MODE.md`](skills/stitch-to-code/references/STRICT_MODE.md) for the details.
+Natural-language requests work through the model-invocable `stitch-to-code` skill too:
 
-## First test
+```text
+Sync this existing app with the current Stitch design using Stitch to Code.
+Preserve the existing product behavior.
+```
 
-I ran a first blinded A/B test on one frozen multi-screen Stitch project using Codex with `xhigh` reasoning. Both runs started from the same project and used the same implementation prompt. One had Stitch to Code installed and the other did not.
+`stitch` is only the human-facing entry point. It delegates to `stitch-to-code`, which owns the design-to-code workflow. Audit reports findings and suggested fixes without applying changes.
 
-| Category | Baseline | Stitch to Code |
-| --- | ---: | ---: |
-| Visual fidelity | 5/12 | 8/12 |
-| Cross-screen consistency | 11/12 | 11/12 |
-| Product truth | 19/20 | 20/20 |
-| Responsive | 3/4 | 3/4 |
-| Accessibility | 4/8 | 7/8 |
-| **Total** | **42/56 (75.0%)** | **49/56 (87.5%)** |
+## Why reconciliation matters
 
-The biggest difference in this test was font and icon fidelity, plus accessibility. Cross-screen consistency was already strong in the baseline on this particular project.
+Design-to-code gets harder when a design project contains several screens.
 
-The skill run was not better at everything. It also introduced an oversized desktop modal and switched to the full sidebar too early. I kept those failures in the benchmark as well.
+Suppose three related screens use a `12px` card radius and one isolated screen appears to use `16px`. If the project's `DESIGN.md` also defines `12px`, copying every screen literally would turn one design inconsistency into a second component system in code.
 
-This is one small test, not a general claim about every Stitch project or every coding agent. My main reason for making the skill came from using this workflow on larger projects, where it helped me much more as inconsistencies accumulated across screens.
+The same problem exists with behavior. If a screen contains an `Export CSV` button but the existing product has no export API, permission, or working behavior, the mockup alone is not a request to invent a production feature.
 
-See [`example/`](example/) for the screenshots, prompts, and both implementations.
+**Design sources answer what the application should look like. Product sources answer what it should actually do.**
+
+## How it works
+
+```text
+        Google Stitch
+             │
+   screens / DESIGN.md
+             │
+             ▼
+        RECONCILE ◀──── existing product
+             │          routes / data / APIs
+             │          components / behavior
+             ▼
+         IMPLEMENT
+             │
+             ▼
+          VALIDATE
+             │
+             ▼
+     working application
+```
+
+The agent first discovers the relevant design and product context. **Reconcile** treats that material as one system. **Implement** preserves intentional design decisions while integrating real components and behavior. **Validate** checks the rendered result, not just the source.
+
+Single-screen work stays lightweight. Multi-screen projects and conflicting sources need explicit reconciliation decisions. Audit follows the same discovery and review discipline but skips implementation and returns findings instead.
+
+## Where Stitch context comes from
+
+The context can come from the current task, a live project through Stitch MCP, `.stitch/DESIGN.md`, stored project/screen IDs, repository-linked artifacts, or exported Stitch screenshots and HTML.
+
+When that context is discoverable, you do not need to repeat IDs or paths. The agent resolves which sources are relevant and authoritative; it asks when project identity is genuinely ambiguous and reports unavailable references instead of guessing. MCP is not required when suitable exports are already available.
+
+## Product-aware design-to-code
+
+**Existing product integration** preserves routes, APIs, permissions, contracts, and working behavior. Mockup affordances are evidence of intent, not proof of capability.
+
+**Greenfield prototype** can use local mock data and client-side interactions without pretending they are real backend or persisted behavior.
+
+**Design sync** applies newer design material while preserving working behavior unless an authoritative requirement changes it. Syncing a prototype does not make its simulated features real.
+
+The agent infers the appropriate mode from the task and repository when possible.
+
+## Browser validation
+
+For web work, the skill calls for checking the rendered application at the relevant reference sizes. When Playwright is already available, `audit-ui.mjs` collects viewport-sized screenshots and evidence for runtime errors, failed requests, horizontal overflow, and font loading. Axe findings are optional when `axe-core` is installed.
+
+Run from the target application's root, using the installed skill's path:
+
+```bash
+node <skill-dir>/scripts/audit-ui.mjs \
+  --url http://localhost:3000 \
+  --routes /,/dashboard \
+  --viewports 1440x900,390x844
+```
+
+The helper installs nothing. It does not replace visual comparison, interaction testing, or accessibility review. Missing browser access is reported as incomplete validation. See [QA.md](skills/stitch-to-code/references/QA.md) for the full procedure.
+
+## Works with the Stitch ecosystem
+
+Google's [Stitch skills](https://github.com/google-labs-code/stitch-skills) provide design retrieval, generation, design-system workflows, and framework-specific output. Stitch to Code complements them by reconciling those designs with the codebase they need to become part of.
+
+It stays framework-agnostic and works with the repository's design system, components, and product constraints.
+
+## Advanced
+
+Most projects need no additional tracking files. Optional [Strict Mode](skills/stitch-to-code/references/STRICT_MODE.md) supports explicit screen history, provenance, and shared-pattern tracking.
+
+See [RECONCILIATION.md](skills/stitch-to-code/references/RECONCILIATION.md) for worked conflict examples and [SKILL.md](skills/stitch-to-code/SKILL.md) for the agent's workflow.
 
 ## License
 
-MIT
+[MIT](LICENSE). Unofficial community project, not affiliated with or endorsed by Google.

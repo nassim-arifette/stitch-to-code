@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate deterministic Stitch to Code invariants using Python stdlib."""
+"""Validate optional Stitch to Code Strict-mode tracking invariants."""
 
 from __future__ import annotations
 
@@ -8,18 +8,12 @@ import hashlib
 import json
 from pathlib import Path
 import re
-import sys
 from typing import Any
-
 
 ALLOWED_SCOPES = {"RESPONSIVE_WEB", "NATIVE", "UNIVERSAL"}
 ALLOWED_KINDS = {
-    "CANONICAL",
-    "RESPONSIVE_STATE",
-    "ACCESSIBILITY_AUDIT",
-    "VARIANT",
-    "SUPERSEDED",
-    "FUTURE_NO_CONTRACT",
+    "CANONICAL", "RESPONSIVE_STATE", "ACCESSIBILITY_AUDIT", "VARIANT",
+    "SUPERSEDED", "FUTURE_NO_CONTRACT",
 }
 PLACEHOLDER_RE = re.compile(r"\[[A-Z][A-Z0-9_]*(?:\s*\|\s*[A-Z0-9_]+)*\]")
 
@@ -38,52 +32,93 @@ def is_placeholder(value: Any) -> bool:
 
 def load_json(path: Path, errors: list[str]) -> dict[str, Any] | None:
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        errors.append(f"Missing required file: {path}")
-    except json.JSONDecodeError as exc:
-        errors.append(f"Invalid JSON in {path}: {exc}")
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            errors.append(f"{path}: JSON root must be an object")
+            return None
+        return data
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        errors.append(f"Cannot read metadata JSON {path}: {exc}")
     return None
 
 
 def check_placeholders(root: Path, allow: bool, errors: list[str], warnings: list[str]) -> None:
-    candidates = [
-        root / ".stitch" / "DESIGN.md",
-        root / ".stitch" / "metadata.json",
-        root / "docs" / "ui" / "UI_PATTERNS.md",
-        root / "docs" / "ui" / "UI_SURFACES.md",
-    ]
-    for path in candidates:
+    for rel in (".stitch/metadata.json", "docs/ui/UI_PATTERNS.md", "docs/ui/UI_SURFACES.md"):
+        path = root / rel
         if not path.exists():
             continue
-        text = path.read_text(encoding="utf-8")
-        hits = sorted(set(PLACEHOLDER_RE.findall(text)))
-        if not hits:
+        try:
+            hits = sorted(set(PLACEHOLDER_RE.findall(path.read_text(encoding="utf-8"))))
+        except (OSError, UnicodeError) as exc:
+            errors.append(f"Cannot read {rel}: {exc}")
             continue
-        msg = f"{path.relative_to(root)} contains unresolved placeholders: {', '.join(hits[:8])}"
-        if len(hits) > 8:
-            msg += f" (+{len(hits)-8} more)"
-        (warnings if allow else errors).append(msg)
+        if hits:
+            msg = f"{rel} contains unresolved placeholders: {', '.join(hits[:8])}"
+            if len(hits) > 8:
+                msg += f" (+{len(hits)-8} more)"
+            (warnings if allow else errors).append(msg)
+
+
+def string_field(data: dict[str, Any], key: str, loc: str, errors: list[str], *, required: bool = True) -> str | None:
+    value = data.get(key)
+    if not required and value in (None, ""):
+        return None
+    if not isinstance(value, str) or not value.strip():
+        errors.append(f"{loc}.{key} must be a non-empty string")
+        return None
+    return value
+
+
+def check_artifacts(root: Path, artifacts: Any, loc: str, errors: list[str]) -> None:
+    if not isinstance(artifacts, dict):
+        errors.append(f"{loc} must be an object")
+        return
+    root = root.resolve()
+    for name, artifact in artifacts.items():
+        where = f"{loc}.{name}"
+        if not isinstance(artifact, dict):
+            errors.append(f"{where} must be an object")
+            continue
+        rel = string_field(artifact, "path", where, errors, required=False)
+        expected = string_field(artifact, "sha256", where, errors, required=False)
+        if not rel or is_placeholder(rel):
+            continue
+        try:
+            source = Path(rel)
+            resolved = (root / source).resolve()
+            if source.is_absolute() or not resolved.is_relative_to(root):
+                errors.append(f"{where}: artifact path must stay within the project root")
+                continue
+            if not resolved.is_file():
+                errors.append(f"{where}: missing or non-file artifact {rel}")
+                continue
+            if expected and not is_placeholder(expected):
+                if not re.fullmatch(r"[a-fA-F0-9]{64}", expected):
+                    errors.append(f"{where}: sha256 must contain 64 hexadecimal characters")
+                elif sha256(resolved).lower() != expected.lower():
+                    errors.append(f"{where}: SHA-256 mismatch for {rel}")
+        except (OSError, ValueError, RuntimeError) as exc:
+            errors.append(f"{where}: cannot validate artifact {rel}: {exc}")
 
 
 def check_metadata(root: Path, data: dict[str, Any], errors: list[str], warnings: list[str]) -> None:
+    if not isinstance(data, dict):
+        errors.append("metadata must be an object")
+        return
     if data.get("schemaVersion") != 2:
         errors.append("metadata.schemaVersion must be 2")
-
     active = data.get("activeProject")
     if not isinstance(active, dict):
         errors.append("metadata.activeProject must be an object")
         return
-
-    for key in ("title", "projectId", "scope", "source", "lastSyncAt"):
-        if key not in active or active[key] in ("", None):
-            errors.append(f"metadata.activeProject.{key} is required")
-
-    scope = active.get("scope")
-    if scope not in ALLOWED_SCOPES and not is_placeholder(scope):
+    active_values = {
+        key: string_field(active, key, "metadata.activeProject", errors)
+        for key in ("title", "projectId", "scope", "source", "lastSyncAt")
+    }
+    scope = active_values["scope"]
+    if scope and scope not in ALLOWED_SCOPES and not is_placeholder(scope):
         errors.append(f"Unsupported activeProject.scope: {scope!r}")
-
-    active_project_id = active.get("projectId")
+    active_project_id = active_values["projectId"]
     screens = data.get("screens", [])
     if not isinstance(screens, list):
         errors.append("metadata.screens must be an array")
@@ -92,184 +127,97 @@ def check_metadata(root: Path, data: dict[str, Any], errors: list[str], warnings
     screen_ids: dict[str, int] = {}
     ux_ids: dict[str, int] = {}
     by_screen: dict[str, dict[str, Any]] = {}
-
     for idx, screen in enumerate(screens):
         loc = f"metadata.screens[{idx}]"
         if not isinstance(screen, dict):
             errors.append(f"{loc} must be an object")
             continue
-
-        sid = screen.get("screenId")
-        uxid = screen.get("uxId")
-        kind = screen.get("kind")
-
-        if not sid:
-            errors.append(f"{loc}.screenId is required")
-        elif not is_placeholder(sid):
-            screen_ids[sid] = screen_ids.get(sid, 0) + 1
+        sid = string_field(screen, "screenId", loc, errors)
+        uxid = string_field(screen, "uxId", loc, errors)
+        kind = string_field(screen, "kind", loc, errors)
+        pid = string_field(screen, "projectId", loc, errors, required=False)
+        for value, counts in ((sid, screen_ids), (uxid, ux_ids)):
+            if value and not is_placeholder(value):
+                counts[value] = counts.get(value, 0) + 1
+        if sid and not is_placeholder(sid):
             by_screen[sid] = screen
-
-        if not uxid:
-            errors.append(f"{loc}.uxId is required")
-        elif not is_placeholder(uxid):
-            ux_ids[uxid] = ux_ids.get(uxid, 0) + 1
-
-        if kind not in ALLOWED_KINDS and not is_placeholder(kind):
+        if kind and kind not in ALLOWED_KINDS and not is_placeholder(kind):
             errors.append(f"{loc}.kind has unsupported value: {kind!r}")
+        if (pid and active_project_id and not is_placeholder(pid)
+                and not is_placeholder(active_project_id) and pid != active_project_id
+                and kind != "SUPERSEDED"):
+            errors.append(f"{loc} points to projectId {pid!r}, not active project {active_project_id!r}")
+        check_artifacts(root, screen.get("artifacts", {}), f"{loc}.artifacts", errors)
+        string_field(screen, "supersededBy", loc, errors, required=False)
 
-        pid = screen.get("projectId")
-        if (
-            pid
-            and active_project_id
-            and not is_placeholder(pid)
-            and not is_placeholder(active_project_id)
-            and pid != active_project_id
-            and kind != "SUPERSEDED"
-        ):
-            errors.append(
-                f"{loc} points to projectId {pid!r}, not active project {active_project_id!r}"
-            )
+    for name, counts in (("screenId", screen_ids), ("uxId", ux_ids)):
+        for value, count in counts.items():
+            if count > 1:
+                errors.append(f"Duplicate {name}: {value!r} appears {count} times")
 
-        artifacts = screen.get("artifacts", {})
-        if isinstance(artifacts, dict):
-            for artifact_name, artifact in artifacts.items():
-                if not isinstance(artifact, dict):
-                    continue
-                rel = artifact.get("path")
-                expected = artifact.get("sha256")
-                if not rel or is_placeholder(rel):
-                    continue
-                path = root / rel
-                if not path.exists():
-                    errors.append(f"{loc}.artifacts.{artifact_name}: missing file {rel}")
-                    continue
-                if expected and not is_placeholder(expected):
-                    actual = sha256(path)
-                    if actual.lower() != str(expected).lower():
-                        errors.append(
-                            f"{loc}.artifacts.{artifact_name}: SHA-256 mismatch for {rel}"
-                        )
-
-    for sid, count in screen_ids.items():
-        if count > 1:
-            errors.append(f"Duplicate screenId: {sid!r} appears {count} times")
-    for uxid, count in ux_ids.items():
-        if count > 1:
-            errors.append(f"Duplicate uxId: {uxid!r} appears {count} times")
-
-    # Validate supersededBy targets and cycles.
     edges: dict[str, str] = {}
     for sid, screen in by_screen.items():
         target = screen.get("supersededBy")
-        if not target or is_placeholder(target):
+        if not isinstance(target, str) or not target or is_placeholder(target):
             continue
         if target not in by_screen:
             errors.append(f"screenId {sid!r} supersededBy missing target {target!r}")
         else:
             edges[sid] = target
 
-    visiting: set[str] = set()
+    # Iterative traversal also handles long screen histories without recursion errors.
     visited: set[str] = set()
+    for start in edges:
+        trail: list[str] = []
+        positions: dict[str, int] = {}
+        node = start
+        while node in edges and node not in visited:
+            if node in positions:
+                cycle = trail[positions[node]:] + [node]
+                errors.append("supersededBy cycle: " + " -> ".join(cycle))
+                break
+            positions[node] = len(trail)
+            trail.append(node)
+            node = edges[node]
+        visited.update(trail)
 
-    def walk(node: str, trail: list[str]) -> None:
-        if node in visited:
-            return
-        if node in visiting:
-            cycle_start = trail.index(node) if node in trail else 0
-            cycle = trail[cycle_start:] + [node]
-            errors.append("supersededBy cycle: " + " -> ".join(cycle))
-            return
-        visiting.add(node)
-        target = edges.get(node)
-        if target:
-            walk(target, trail + [node])
-        visiting.remove(node)
-        visited.add(node)
-
-    for node in list(edges):
-        walk(node, [])
-
-
-
-def check_design(root: Path, errors: list[str], warnings: list[str]) -> None:
-    path = root / ".stitch" / "DESIGN.md"
-    if not path.exists():
-        errors.append(
-            "Missing required Stitch design file: .stitch/DESIGN.md "
-            "(generate/sync it through Stitch or the official Stitch design-md workflow; "
-            "Stitch to Code does not create a replacement)"
-        )
-        return
-
-    text = path.read_text(encoding="utf-8")
-    if not text.startswith("---\n"):
-        warnings.append(
-            ".stitch/DESIGN.md has no YAML frontmatter. Accepted: current official Stitch "
-            "workflows document both prose-only and structured DESIGN.md shapes. Preserve the "
-            "format produced by the workflow you use."
-        )
-        return
-
-    end = text.find("\n---", 4)
-    if end == -1:
-        errors.append(".stitch/DESIGN.md has an unterminated YAML frontmatter block")
-        return
-
-    frontmatter = text[4:end]
-    if not re.search(r"(?m)^name\s*:\s*.+$", frontmatter):
-        errors.append(".stitch/DESIGN.md structured frontmatter is missing required 'name:'")
-    if not re.search(r"(?m)^colors\s*:\s*(?:$|\{)", frontmatter):
-        errors.append(".stitch/DESIGN.md structured frontmatter is missing required 'colors:' mapping")
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Validate Stitch to Code project state.")
+    parser = argparse.ArgumentParser(description="Validate optional Stitch to Code Strict-mode tracking state.")
     parser.add_argument("--root", default=".", help="Target repository root.")
-    parser.add_argument(
-        "--allow-placeholders",
-        action="store_true",
-        help="Report unresolved template placeholders as warnings instead of errors.",
-    )
+    parser.add_argument("--allow-placeholders", action="store_true",
+                        help="Report unresolved Strict template placeholders as warnings instead of errors.")
     args = parser.parse_args()
-
     root = Path(args.root).expanduser().resolve()
     errors: list[str] = []
     warnings: list[str] = []
-
-    check_design(root, errors, warnings)
-
     metadata_path = root / ".stitch" / "metadata.json"
-    patterns_path = root / "docs" / "ui" / "UI_PATTERNS.md"
-    surfaces_path = root / "docs" / "ui" / "UI_SURFACES.md"
-
-    # Lite has no Stitch to Code state. The presence of any Strict-owned file
-    # means Strict tracking has been opted into and must be structurally complete.
-    strict_paths = (metadata_path, patterns_path, surfaces_path)
-    strict_present = [path for path in strict_paths if path.exists()]
-    if strict_present:
-        for path in strict_paths:
-            if not path.exists():
-                errors.append(
-                    f"Incomplete Strict mode: missing {path.relative_to(root)} "
-                    "while other Strict-mode state exists"
-                )
-
-        if metadata_path.exists():
-            data = load_json(metadata_path, errors)
-            if data is not None:
-                check_metadata(root, data, errors, warnings)
-
+    strict_paths = (metadata_path, root / "docs/ui/UI_PATTERNS.md", root / "docs/ui/UI_SURFACES.md")
+    if not any(path.exists() or path.is_symlink() for path in strict_paths):
+        print("PASS: no Strict-mode Stitch to Code state detected; nothing to validate")
+        print("INFO: validate .stitch/DESIGN.md separately with @google/design.md when available")
+        return 0
+    if not (root / ".stitch/DESIGN.md").is_file():
+        errors.append("Strict mode expects .stitch/DESIGN.md from the Stitch/DESIGN.md workflow; "
+                      "Stitch to Code does not create a replacement")
+    for path in strict_paths:
+        if not path.is_file():
+            errors.append(f"Incomplete Strict mode: missing or non-file {path.relative_to(root)} "
+                          "while other Strict-mode state exists")
+    if metadata_path.is_file():
+        data = load_json(metadata_path, errors)
+        if data is not None:
+            check_metadata(root, data, errors, warnings)
     check_placeholders(root, args.allow_placeholders, errors, warnings)
-
     for warning in warnings:
         print(f"WARN  {warning}")
     for error in errors:
         print(f"ERROR {error}")
-
     if errors:
         print(f"\nFAIL: {len(errors)} error(s), {len(warnings)} warning(s)")
         return 1
-
     print(f"PASS: 0 errors, {len(warnings)} warning(s)")
+    print("INFO: validate .stitch/DESIGN.md separately with @google/design.md when available")
     return 0
 
 
