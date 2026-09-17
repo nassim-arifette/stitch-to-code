@@ -15,6 +15,10 @@ Treat the remaining arguments as the requested scope; preserve any supplied refe
 
 If no operation was provided, infer it from the user's request when obvious. Otherwise ask whether they want to implement, sync, or audit before doing work.
 
-Call the Skill tool with "stitch-to-code", passing the operation, scope, and task context, and carry out the corresponding workflow. If the agent has no Skill tool, load the installed `stitch-to-code` skill through its supported skill-loading mechanism and follow it in the current task.
+Delegate to the already-installed sibling skill `stitch-to-code`, passing the operation, scope, and current task context.
 
-If `stitch-to-code` is missing, report that both skills must be installed; do not call `stitch` recursively or invent a replacement workflow.
+Only use the `stitch-to-code` skill installed from the same `nassim-arifette/stitch-to-code` bundle as this `stitch` entry point. Do not install, fetch, discover, or substitute another skill with the same name.
+
+If the sibling `stitch-to-code` skill is unavailable, or its provenance cannot be established, stop and tell the user to install both `stitch` and `stitch-to-code` from `nassim-arifette/stitch-to-code`.
+
+If the agent cannot delegate to another installed skill, tell the user to invoke the installed `stitch-to-code` skill directly. Do not load it from another source, call `stitch` recursively, or invent a replacement workflow.
