@@ -71,13 +71,15 @@ The skill selects one of three implementation modes before coding:
 - **greenfield prototype** — local mock data and client-only behavior are allowed without pretending they are real backend capability;
 - **design sync/update** — preserve existing working behavior while bringing the visual implementation in line with current Stitch material.
 
-The skill uses the current `.stitch/DESIGN.md` when available; it does not replace it with its own design system. For the current structured Google `DESIGN.md` format, machine-readable token values provide exact values while prose explains how they should be applied. When the official linter is runnable, the workflow can validate the file deterministically with:
+The skill uses the current `.stitch/DESIGN.md` when available; it does not replace it with its own design system. For the current structured Google `DESIGN.md` format, machine-readable token values provide exact values while prose explains how they should be applied.
+
+When `@google/design.md` is already available through the project or environment, the workflow can run its linter with the project's normal package tooling, for example:
 
 ```bash
 npx @google/design.md lint .stitch/DESIGN.md
 ```
 
-The skill does not add that package as a permanent project dependency just to lint the file.
+The workflow should not install, fetch, or download that package solely for this check unless one-off tool execution is appropriate and permitted in the current environment.
 
 ## What it tries to fix
 
@@ -92,7 +94,7 @@ Mockups can also contain things that only exist to make the screen look realisti
 Stitch to Code gives the agent a few rules for dealing with that:
 
 - use an explicit visual and behavioral source-of-truth hierarchy when sources disagree;
-- compare related screens before coding and build a temporary reconciliation map;
+- reconcile relevant design/product sources before coding, using a temporary reconciliation map only when multiple screens, contradictions, or non-trivial normalization make it useful;
 - use the exact font, icons, tokens, spacing, radii, breakpoints, and assets the authoritative design source defines;
 - keep intentional differences, but reconcile accidental inconsistencies;
 - reuse existing components when they already match or can safely satisfy the intended pattern;
@@ -106,7 +108,7 @@ The skill does not impose a font, icon library, component library, or frontend f
 
 ## Browser evidence
 
-The skill includes `scripts/audit-ui.mjs` for deterministic browser evidence. When the target project already has Playwright, it can capture target viewports and report screenshots, console/page errors, failed/error network responses, horizontal overflow, computed font usage/font resources, and optional axe findings when `axe-core` is already installed.
+The skill includes `scripts/audit-ui.mjs` for deterministic browser evidence. When the target project already has Playwright, it can capture target viewports and report screenshots, console/page errors, failed/error network responses, document-level horizontal overflow, offscreen-element diagnostics, computed font usage/font resources, and optional axe findings when `axe-core` is already installed.
 
 From this repository, an example is:
 
@@ -117,7 +119,9 @@ node skills/stitch-to-code/scripts/audit-ui.mjs \
   --viewports 1440x900,390x844
 ```
 
-By default evidence is written to an OS temporary directory, so Lite mode does not need another committed project artifact. The script does not install Playwright or axe.
+Screenshots use the requested viewport dimensions by default and disable animations/transitions during capture for more stable evidence. Use `--full-page` only when a whole scrollable page is useful, and `--storage-state <file>` to reuse an existing Playwright authenticated state without adding login logic to the skill.
+
+By default evidence is written to an OS temporary directory, so Lite mode does not need another committed project artifact. Storage-state contents are not copied into the evidence output. The script does not install Playwright or axe.
 
 See [`QA.md`](skills/stitch-to-code/references/QA.md) for the browser procedure and [`RECONCILIATION.md`](skills/stitch-to-code/references/RECONCILIATION.md) for conflict examples.
 
@@ -139,7 +143,7 @@ The bundled Python scripts initialize and validate this optional tracking state.
 
 See [`STRICT_MODE.md`](skills/stitch-to-code/references/STRICT_MODE.md) for the details.
 
-## First test
+## Initial case study
 
 I ran a first blinded A/B test on one frozen multi-screen Stitch project using Codex with `xhigh` reasoning. Both runs started from the same project and used the same implementation prompt. One had Stitch to Code installed and the other did not.
 
@@ -154,7 +158,7 @@ I ran a first blinded A/B test on one frozen multi-screen Stitch project using C
 
 The biggest difference in this test was font and icon fidelity, plus accessibility. Cross-screen consistency was already strong in the baseline on this particular project.
 
-The skill run was not better at everything. It also introduced an oversized desktop modal and switched to the full sidebar too early. I kept those failures in the benchmark as well.
+The skill run was not better at everything. It also introduced an oversized desktop modal and switched to the full sidebar too early. I kept those failures in the case study as well.
 
 This is one small test, not a general claim about every Stitch project or every coding agent. My main reason for making the skill came from using this workflow on larger projects, where it helped me much more as inconsistencies accumulated across screens.
 
