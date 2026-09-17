@@ -1,7 +1,7 @@
 ---
 name: stitch-to-code
 description: >-
-  Implement or sync Google Stitch designs into a real application. Use whenever a task involves Stitch screens, a Stitch project, Stitch MCP, or .stitch/DESIGN.md. Reconcile multiple screens into one coherent UI, preserve explicit design tokens/assets, map mockup affordances to real product behavior, reuse compatible existing components, and validate the rendered implementation. Do not use for unrelated image/Figma-to-code work.
+  Implement or sync Google Stitch designs into code. Use for Stitch screens or projects, Stitch MCP, .stitch/DESIGN.md, multi-screen reconciliation, or design sync. Do not use for unrelated Figma/image-to-code work.
 ---
 
 # Stitch to Code
@@ -70,27 +70,29 @@ Establish:
 
 If Stitch MCP or specialized Stitch skills are available, use them for retrieval/generation work and fetch only the material needed for the task.
 
-If `.stitch/DESIGN.md` exists and the Google linter is available, run:
+If `.stitch/DESIGN.md` exists and `@google/design.md` is already available through the project or environment, run its linter using the project's normal package tooling, for example:
 
 ```bash
 npx @google/design.md lint .stitch/DESIGN.md
 ```
 
-Do not add a permanent dependency just to run the linter. Do not rewrite `DESIGN.md` merely to make the implementation convenient. If lint cannot run, state that; if it reports malformed/unresolved tokens, surface the finding and do not silently substitute guessed values.
+Do not install, fetch, or download the package solely for this check unless one-off tool execution is appropriate and permitted in the current environment. Do not rewrite `DESIGN.md` merely to make the implementation convenient. If lint cannot run, state that; if it reports malformed/unresolved tokens, surface the finding and do not silently substitute guessed values.
 
 > **Discovery gate:** proceed only when the target surfaces, implementation mode, authoritative design sources, product capabilities/constraints, and validation path are known.
 
 ## Phase 2 — Reconcile before coding
 
-Compare all relevant screens together. Do not implement them as independent mockups.
+Reconciliation is always required; a written reconciliation map is not.
 
-Create a small **temporary reconciliation map** in working notes, not a committed Lite-mode artifact:
+Compare all relevant design and product sources before implementation. When there are **multiple screens, conflicting sources, or non-trivial normalization decisions**, create a small temporary reconciliation map in working notes, not a committed Lite-mode artifact:
 
 ```text
 surface → canonical shell → shared patterns → local exceptions → mock-only/unsupported controls → responsive state
 ```
 
-Use one row/entry per relevant surface. Resolve disagreements using the source-of-truth hierarchies above, and classify each meaningful difference as one of:
+For a single straightforward screen with no meaningful source conflict, perform the same checks without producing the map.
+
+When a map is needed, use one row/entry per relevant surface. Resolve disagreements using the source-of-truth hierarchies above, and classify each meaningful difference as one of:
 
 - intentional variant;
 - real product requirement;
@@ -111,7 +113,7 @@ Do **not** silently mutate an explicit design token only to improve contrast or 
 
 Read `references/RECONCILIATION.md` when a conflict is non-trivial or several screens disagree.
 
-> **Reconciliation gate:** proceed only when every relevant surface is represented in the reconciliation map, shared patterns and intentional exceptions are identified, and no unresolved contradiction is silently driving implementation.
+> **Reconciliation gate:** proceed only when meaningful source conflicts are resolved, shared patterns and intentional exceptions are understood, and any case that needs an explicit reconciliation map has one. Do not let an unresolved contradiction silently drive implementation.
 
 ## Phase 3 — Implement
 
@@ -138,13 +140,11 @@ Across all modes:
 
 For web work, validate the **rendered application**, not only the source. Open the live UI first; use source inspection afterward to explain and fix observed problems.
 
-Use the bundled `scripts/audit-ui.mjs` when Playwright is already available in the target project. Run it at the Stitch/reference widths and around important breakpoints. It captures screenshots plus deterministic evidence for console/page errors, failed/error responses, horizontal overflow, computed font usage/font resources, and optional axe accessibility findings when `axe-core` is installed.
-
-Read `references/QA.md` for the full browser procedure and audit command options.
+Use the bundled `scripts/audit-ui.mjs` when Playwright is already available in the target project, and follow `references/QA.md` for the browser/responsive/accessibility procedure and command options.
 
 Also run the repository's normal typecheck, lint, tests, build/export, or equivalent checks where appropriate.
 
-> **Validation gate:** finish only when the relevant surfaces were inspected at the reference/responsive widths, important interactions and accessibility behavior were exercised, runtime/overflow/font/asset issues have no unexplained failures, and any remaining visual/product deviations are explicit.
+> **Validation gate:** finish only when the relevant surfaces were inspected at the reference/responsive widths, important interactions and accessibility behavior were exercised, browser evidence has no unexplained failures, and any remaining visual/product deviations are explicit.
 
 ## Done
 
