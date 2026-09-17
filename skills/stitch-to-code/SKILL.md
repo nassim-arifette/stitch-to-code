@@ -1,140 +1,151 @@
 ---
 name: stitch-to-code
-description: Use when implementing Google Stitch screens with a coding agent. Preserve Stitch's exact visual choices, reconcile inconsistencies across screens, avoid inventing product behavior from mockup content, reuse existing UI patterns, and validate the real implementation.
+description: >-
+  Implement or sync Google Stitch designs into a real application. Use whenever a task involves Stitch screens, a Stitch project, Stitch MCP, or .stitch/DESIGN.md. Reconcile multiple screens into one coherent UI, preserve explicit design tokens/assets, map mockup affordances to real product behavior, reuse compatible existing components, and validate the rendered implementation. Do not use for unrelated image/Figma-to-code work.
 ---
 
 # Stitch to Code
 
-Turn a set of Stitch screens into **one coherent app**, not a collection of independently copied mockups.
+Use Stitch to Code as the **integration and reconciliation layer** between Stitch-generated design material and a real codebase. It is not a downloader, a framework generator, or a replacement for Stitch/Google design tooling.
 
 The core rule is:
 
-> Preserve deliberate Stitch decisions exactly. Reconcile accidental inconsistencies. Ground behavior in the actual product.
+> Preserve deliberate design decisions. Reconcile accidental inconsistencies. Ground behavior in the actual product and the selected implementation mode.
 
-## Use Lite by default
+Use **Lite** by default. Lite adds no permanent Stitch to Code state. Use **Strict** only when explicit screen history, shared-pattern tracking, or QA/provenance records solve a real project need; read `references/STRICT_MODE.md` then.
 
-Lite needs no Stitch to Code project state.
+## Choose the implementation mode first
 
-Use the current Stitch references, the Stitch-generated `.stitch/DESIGN.md` when available, and the existing repository. Do not create metadata or registries just to use this skill.
+Select one mode before editing code:
 
-Use **Strict** only when the project genuinely benefits from explicit screen history, shared-pattern tracking, or QA/provenance records. Read `references/STRICT_MODE.md` in that case.
+- **Existing product integration** — default when the repository already contains a working product. Preserve real routes, data contracts, permissions, and supported behavior. Do not invent backend/product capability from mockup content.
+- **Greenfield prototype** — use when the user is intentionally building a Stitch prototype. Local mock data and client-only interactions are valid, but do not present them as persisted, authenticated, server-backed, or otherwise real when they are not.
+- **Design sync/update** — use when an existing implementation is being brought in line with newer Stitch design material. Preserve working behavior and product contracts unless the user or an authoritative product requirement explicitly changes them.
 
-## 1. Understand the product before coding
+If the mode is not stated, infer it from the repository and request. Prefer **existing product integration** when a real application already exists.
 
-Inspect the repository and resolve what actually exists:
+## Source-of-truth hierarchy
 
-- routes and navigation;
-- real entities/data;
-- supported actions;
-- roles/permissions when relevant;
-- existing components and tokens;
-- product docs, schemas, API clients/contracts when they exist;
-- important loading, empty, error, denied, pending, and success states.
+Use separate hierarchies for visual decisions and product behavior.
 
-Do not infer a real feature simply because it appears in a mockup.
+### Visual decisions
 
-If a visible mockup control has no supported product action, remove/recast it rather than shipping a fake or inert control.
+When visual sources disagree, prefer in this order:
 
-## 2. Read the relevant Stitch material together
+1. the user's explicit requirement for the current task;
+2. current structured values in `.stitch/DESIGN.md` for properties they directly define;
+3. an explicitly current/canonical Stitch screen;
+4. a pattern repeated across the relevant Stitch screens;
+5. a compatible existing component or token in the repository;
+6. an isolated screen anomaly.
 
-Use stable Stitch project/screen IDs when available.
+For a current structured `DESIGN.md`, treat machine-readable token values as exact values and prose as guidance for how to apply them. If a token is malformed or unresolved, it is not a usable exact value until the conflict is resolved; preserve the source file and report the problem rather than silently guessing.
 
-If Stitch MCP or specialized Stitch skills are available, use them to retrieve the current project, screens, `DESIGN.md`, and relevant assets. Fetch only what is needed for the current work.
+Do not let an isolated screenshot detail override a higher-priority explicit token or established repeated pattern.
 
-Before implementing, compare the relevant screens together and identify:
+### Product behavior
 
-- the shared shell, navigation, headers, panels, lists, forms, and actions;
-- typography, iconography, colors, spacing, radii, assets, and density;
-- declared breakpoints and responsive behavior;
-- differences that appear intentional;
-- differences that look like isolated drift.
+When deciding what the UI should actually do, prefer in this order:
 
-Do not assume every local difference in a generated screen is a new canonical pattern.
+1. the user's explicit product requirement/specification;
+2. APIs, schemas, permissions, routes, domain models, and tests;
+3. existing working product behavior;
+4. Stitch affordances as evidence of intent only.
 
-## 3. Keep explicit Stitch choices exact
+The mode changes what is allowed at level 4: a prototype may implement clearly local/mock behavior; an existing product or sync task must not fabricate product capability.
 
-When Stitch defines a visual primitive, do not silently substitute a similar one.
+## Phase 1 — Discover
 
-Preserve as applicable:
+Inspect the repository and the relevant Stitch material before editing.
 
-- font family and declared weights/metrics;
-- icon family;
-- exact glyph;
-- icon style/variant/state such as outlined/filled and relevant axes;
-- colors and semantic tokens;
-- spacing and radii;
-- supplied logos/assets;
-- explicit responsive thresholds;
-- established component language.
+Establish:
 
-If the exact dependency/resource is technically unavailable, make the fallback explicit rather than quietly replacing it.
+- target surfaces/screens and stable Stitch project/screen IDs when available;
+- the selected implementation mode;
+- which Stitch references are current/canonical;
+- routes, navigation, real entities/data, APIs/contracts, roles/permissions, and supported actions;
+- existing components, tokens, assets, and responsive conventions;
+- important loading, empty, error, denied, pending, and success states;
+- how the application is run and which normal type/lint/test/build checks apply.
 
-`DESIGN.md` belongs to the Stitch design workflow. Preserve it. Add a rule only when a real project decision is missing and has been confirmed; do not turn `DESIGN.md` into a product-status or QA database.
+If Stitch MCP or specialized Stitch skills are available, use them for retrieval/generation work and fetch only the material needed for the task.
 
-## 4. Reconcile screens instead of copying contradictions
+If `.stitch/DESIGN.md` exists and the Google linter is available, run:
 
-When screens disagree, decide whether the difference is:
+```bash
+npx @google/design.md lint .stitch/DESIGN.md
+```
 
-- intentional and should stay;
-- an isolated Stitch inconsistency that should be normalized;
-- required by the real product;
-- illustrative content that should disappear.
+Do not add a permanent dependency just to run the linter. Do not rewrite `DESIGN.md` merely to make the implementation convenient. If lint cannot run, state that; if it reports malformed/unresolved tokens, surface the finding and do not silently substitute guessed values.
 
-Prefer an already established shared pattern over creating another nearly identical header, card, button, search control, pagination, modal, or navigation family.
+> **Discovery gate:** proceed only when the target surfaces, implementation mode, authoritative design sources, product capabilities/constraints, and validation path are known.
 
-Do not over-normalize real feature-specific differences.
+## Phase 2 — Reconcile before coding
 
-## 5. Implement real behavior
+Compare all relevant screens together. Do not implement them as independent mockups.
 
-- Reuse existing components before creating new families.
-- Wire only supported actions.
-- Do not invent metrics, identities, balances, notifications, routes, filters, or mutations.
-- Do not leave visible interactive-looking elements inert.
-- Preserve exact/sensitive values when relevant.
-- Keep desktop and compact views backed by the same underlying product data.
-- Use Stitch/project breakpoints rather than familiar framework defaults when they are explicitly defined.
-- Keep desktop dialogs content-driven; do not create large empty modal regions just to fill a viewport.
+Create a small **temporary reconciliation map** in working notes, not a committed Lite-mode artifact:
 
-## 6. Check accessibility in the implementation
+```text
+surface → canonical shell → shared patterns → local exceptions → mock-only/unsupported controls → responsive state
+```
 
-Accessibility is part of the coded product, not something a Stitch screenshot can prove.
+Use one row/entry per relevant surface. Resolve disagreements using the source-of-truth hierarchies above, and classify each meaningful difference as one of:
 
-Check the implementation itself for keyboard operation, visible focus, semantic structure, labels and accessible names, contrast, dialog/drawer behavior, and responsive/zoom behavior where relevant.
+- intentional variant;
+- real product requirement;
+- responsive state;
+- illustrative/mock-only content;
+- isolated Stitch drift to normalize.
 
-## 7. Validate the real app
+Prefer an established shared pattern over creating another nearly identical header, card, button, search control, pagination, modal, or navigation family. Do not over-normalize genuine feature-specific differences.
 
-For web work, run the application and inspect it in a real browser/browser automation environment.
+### Fidelity vs accessibility
 
-Check the things most likely to drift:
+Accessibility behavior belongs to the coded product: implement semantics, keyboard operation, focus, labels/names, dialog behavior, and other non-conflicting accessibility requirements.
 
-- actual font loading, not only CSS declarations;
-- icon family, glyph, and variant/state;
-- key colors/tokens, spacing, radii, and assets;
-- navigation and important actions;
-- every visible control that appears interactive;
-- responsive behavior around actual design breakpoints;
-- horizontal overflow and critical truncation;
-- modal/drawer sizing, scroll, close behavior, focus trapping/restoration;
-- keyboard operation and visible focus;
-- labels, headings, landmarks, and accessible names;
-- runtime/console errors;
-- loading/empty/error/permission states where relevant.
+Do **not** silently mutate an explicit design token only to improve contrast or another visual accessibility property. Instead:
 
-Run the repository's normal type/lint/test/build checks where appropriate.
+- when accessibility/compliance is an explicit project requirement, make the minimum necessary visual deviation and record/report it;
+- otherwise preserve the explicit design source and flag the conflict.
 
-Read `references/QA.md` when you need the fuller checklist.
+Read `references/RECONCILIATION.md` when a conflict is non-trivial or several screens disagree.
 
-## Done means coherent and working
+> **Reconciliation gate:** proceed only when every relevant surface is represented in the reconciliation map, shared patterns and intentional exceptions are identified, and no unresolved contradiction is silently driving implementation.
 
-Do not mark a surface complete merely because it resembles a Stitch screenshot.
+## Phase 3 — Implement
 
-Before finishing, make sure:
+Preserve exact Stitch choices when they are authoritative: font family/weights, icon family/glyph/variant, colors/tokens, spacing, radii, supplied assets, explicit breakpoints, and established component language.
 
-- the relevant Stitch references were considered together;
-- explicit Stitch visual choices were preserved or deviations were stated;
-- accidental cross-screen inconsistencies were reconciled without erasing intentional variants;
-- unsupported mockup behavior was not invented;
-- required interactions actually work;
-- there are no misleading dead controls;
-- the important responsive and accessibility behavior was checked in the rendered app;
-- no unexplained runtime errors remain.
+Then apply the mode rules:
+
+- **Existing product integration:** reuse compatible existing components before creating new families; adapt them when a higher-priority design source requires it; wire only supported product actions; remove or recast unsupported mockup controls.
+- **Greenfield prototype:** local mock data and client state are allowed; make visible controls actually work at the prototype level; do not fake remote persistence, permissions, account state, or server success unless explicitly requested as simulation.
+- **Design sync/update:** preserve working routes, data flow, mutations, permissions, and interaction semantics unless an authoritative requirement changes them; update the visual/system layer around that behavior.
+
+Across all modes:
+
+- keep shared patterns actually shared;
+- do not invent metrics, identities, balances, notifications, routes, filters, or mutations that the chosen mode does not justify;
+- do not leave interactive-looking controls inert;
+- keep wide and compact states backed by the same underlying product truth;
+- use explicit Stitch/project breakpoints instead of familiar framework defaults when they exist;
+- make technical fallbacks explicit rather than silently swapping fonts, icons, or assets.
+
+> **Implementation gate:** proceed only when mode-valid interactions work, reusable patterns are shared, explicit design choices are preserved or deviations are explained, and there are no misleading dead controls or accidental parallel component families.
+
+## Phase 4 — Validate with browser evidence
+
+For web work, validate the **rendered application**, not only the source. Open the live UI first; use source inspection afterward to explain and fix observed problems.
+
+Use the bundled `scripts/audit-ui.mjs` when Playwright is already available in the target project. Run it at the Stitch/reference widths and around important breakpoints. It captures screenshots plus deterministic evidence for console/page errors, failed/error responses, horizontal overflow, computed font usage/font resources, and optional axe accessibility findings when `axe-core` is installed.
+
+Read `references/QA.md` for the full browser procedure and audit command options.
+
+Also run the repository's normal typecheck, lint, tests, build/export, or equivalent checks where appropriate.
+
+> **Validation gate:** finish only when the relevant surfaces were inspected at the reference/responsive widths, important interactions and accessibility behavior were exercised, runtime/overflow/font/asset issues have no unexplained failures, and any remaining visual/product deviations are explicit.
+
+## Done
+
+All four gates must pass. In the final handoff, state any intentional design deviation, unresolved source conflict, skipped validation capability, or prototype-only behavior. Do not call a surface complete merely because it resembles a Stitch screenshot.
