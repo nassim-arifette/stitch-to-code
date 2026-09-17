@@ -3,6 +3,10 @@
 
 Stitch to Code is a small Agent Skill for coding agents like Codex and Claude Code.
 
+> **Stitch to Code is not another Stitch downloader or React generator. It is the integration/reconciliation layer between generated Stitch designs and a real codebase.**
+
+Google now maintains its own [`google-labs-code/stitch-skills`](https://github.com/google-labs-code/stitch-skills) for workflows such as retrieving/generating Stitch designs, managing/extracting `DESIGN.md`, and generating framework-specific components. Stitch to Code is designed to work **alongside** those tools: it stays framework-agnostic, reconciles multiple design sources/screens with the existing product, preserves real behavior, and validates the rendered integration.
+
 I made it because I kept running into the same problem with Google Stitch: individual screens could look good, but once a project had several pages, they did not always feel like the same app anymore. The coding agent would then implement those differences literally, or change things Stitch had already defined clearly, like the font or icon set.
 
 This got much more noticeable for me on larger projects. The more screens I had, the more these small and large inconsistencies added up. Using the rules behind this skill helped me a lot more than simply handing every Stitch screen to the coding agent and hoping it would reconcile everything by itself.
@@ -61,7 +65,19 @@ Use the current Stitch project and DESIGN.md, reconcile inconsistencies across s
 and validate the result in the browser.
 ```
 
-The skill uses the `DESIGN.md` produced by Stitch. It does not replace it with its own design system.
+The skill selects one of three implementation modes before coding:
+
+- **existing product integration** — real product behavior/contracts win over mockup affordances;
+- **greenfield prototype** — local mock data and client-only behavior are allowed without pretending they are real backend capability;
+- **design sync/update** — preserve existing working behavior while bringing the visual implementation in line with current Stitch material.
+
+The skill uses the current `.stitch/DESIGN.md` when available; it does not replace it with its own design system. For the current structured Google `DESIGN.md` format, machine-readable token values provide exact values while prose explains how they should be applied. When the official linter is runnable, the workflow can validate the file deterministically with:
+
+```bash
+npx @google/design.md lint .stitch/DESIGN.md
+```
+
+The skill does not add that package as a permanent project dependency just to lint the file.
 
 ## What it tries to fix
 
@@ -75,22 +91,41 @@ Mockups can also contain things that only exist to make the screen look realisti
 
 Stitch to Code gives the agent a few rules for dealing with that:
 
-- use the exact font, icons, tokens, spacing, radii, breakpoints, and assets Stitch defines
-- look at related screens together instead of treating each one as an isolated mockup
-- keep intentional differences, but reconcile accidental inconsistencies
-- reuse existing components when they already match the intended pattern
-- check what the app actually supports before turning mockup content into functionality
-- do not leave controls that look interactive but do nothing
-- check keyboard use, focus, semantics, labels, contrast, and responsive behavior in the actual implementation
-- run the app in a real browser before calling the work finished
+- use an explicit visual and behavioral source-of-truth hierarchy when sources disagree;
+- compare related screens before coding and build a temporary reconciliation map;
+- use the exact font, icons, tokens, spacing, radii, breakpoints, and assets the authoritative design source defines;
+- keep intentional differences, but reconcile accidental inconsistencies;
+- reuse existing components when they already match or can safely satisfy the intended pattern;
+- distinguish production integration from prototype-only mock behavior;
+- preserve existing working behavior during design-sync tasks unless an authoritative requirement changes it;
+- do not leave controls that look interactive but do nothing;
+- resolve fidelity-vs-accessibility conflicts explicitly instead of silently changing design tokens;
+- validate the live app with browser evidence before calling the work finished.
 
-The skill does not impose a font or icon library of its own. If one Stitch project uses Hanken Grotesk and Material Symbols while another uses Geist and Phosphor, the agent should follow the project it is working on.
+The skill does not impose a font, icon library, component library, or frontend framework of its own. If one Stitch project uses Hanken Grotesk and Material Symbols while another uses Geist and Phosphor, the agent should follow the project it is working on.
+
+## Browser evidence
+
+The skill includes `scripts/audit-ui.mjs` for deterministic browser evidence. When the target project already has Playwright, it can capture target viewports and report screenshots, console/page errors, failed/error network responses, horizontal overflow, computed font usage/font resources, and optional axe findings when `axe-core` is already installed.
+
+From this repository, an example is:
+
+```bash
+node skills/stitch-to-code/scripts/audit-ui.mjs \
+  --url http://localhost:3000 \
+  --routes /,/orders \
+  --viewports 1440x900,390x844
+```
+
+By default evidence is written to an OS temporary directory, so Lite mode does not need another committed project artifact. The script does not install Playwright or axe.
+
+See [`QA.md`](skills/stitch-to-code/references/QA.md) for the browser procedure and [`RECONCILIATION.md`](skills/stitch-to-code/references/RECONCILIATION.md) for conflict examples.
 
 ## Optional strict mode
 
 Most people do not need this.
 
-The normal workflow does not add metadata files, registries, or Python setup to your project. The agent works from the Stitch references and the repo itself: existing components, routes, product docs, schemas or API clients when relevant, tests, and code.
+The normal workflow does not add metadata files or registries to your project. The agent works from the Stitch references, `DESIGN.md`, and the repo itself: existing components, routes, product docs, schemas/API clients when relevant, tests, and code.
 
 For larger projects where you actually want explicit tracking, Strict mode can add:
 
@@ -100,7 +135,7 @@ docs/ui/UI_PATTERNS.md
 docs/ui/UI_SURFACES.md
 ```
 
-The bundled Python scripts only initialize and validate this optional state. They are not needed for the skill itself.
+The bundled Python scripts initialize and validate this optional tracking state. They are separate from the default browser-evidence helper.
 
 See [`STRICT_MODE.md`](skills/stitch-to-code/references/STRICT_MODE.md) for the details.
 
