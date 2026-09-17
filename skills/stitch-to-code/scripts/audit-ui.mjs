@@ -232,28 +232,32 @@ async function collectDomEvidence(page) {
 
 async function collectAxe(page, axeCore) {
   if (!axeCore?.source) {
-    return { available: false, violations: [] };
+    return { available: false, error: null, violations: [] };
   }
 
-  await page.addScriptTag({ content: axeCore.source });
-  const result = await page.evaluate(async () => {
-    const output = await window.axe.run(document, {
-      resultTypes: ['violations'],
+  try {
+    await page.addScriptTag({ content: axeCore.source });
+    const result = await page.evaluate(async () => {
+      const output = await window.axe.run(document, {
+        resultTypes: ['violations'],
+      });
+      return output.violations.map((violation) => ({
+        id: violation.id,
+        impact: violation.impact,
+        help: violation.help,
+        helpUrl: violation.helpUrl,
+        nodes: violation.nodes.slice(0, 10).map((node) => ({
+          target: node.target,
+          html: node.html,
+          failureSummary: node.failureSummary,
+        })),
+      }));
     });
-    return output.violations.map((violation) => ({
-      id: violation.id,
-      impact: violation.impact,
-      help: violation.help,
-      helpUrl: violation.helpUrl,
-      nodes: violation.nodes.slice(0, 10).map((node) => ({
-        target: node.target,
-        html: node.html,
-        failureSummary: node.failureSummary,
-      })),
-    }));
-  });
 
-  return { available: true, violations: result };
+    return { available: true, error: null, violations: result };
+  } catch (error) {
+    return { available: true, error: error.message, violations: [] };
+  }
 }
 
 function shouldFail(failOn, findings) {
@@ -312,6 +316,7 @@ async function main() {
       httpErrors: 0,
       overflowTargets: 0,
       axeViolations: 0,
+      axeErrors: 0,
       navigationFailures: 0,
     },
   };
@@ -364,7 +369,7 @@ async function main() {
         const startedAt = Date.now();
         let navigationError = null;
         let domEvidence = null;
-        let axe = { available: Boolean(axeCore?.source), violations: [] };
+        let axe = { available: Boolean(axeCore?.source), error: null, violations: [] };
 
         try {
           await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: args.timeout });
@@ -398,7 +403,7 @@ async function main() {
           runtime: Boolean(consoleErrors.length || pageErrors.length || navigationError),
           network: Boolean(requestFailures.length || httpErrors.length),
           overflow,
-          a11y: Boolean(axe.violations.length),
+          a11y: Boolean(axe.violations.length || axe.error),
         };
 
         if (shouldFail(args.failOn, findings)) exitCode = 1;
@@ -409,6 +414,7 @@ async function main() {
         report.summary.httpErrors += httpErrors.length;
         report.summary.overflowTargets += overflow ? 1 : 0;
         report.summary.axeViolations += axe.violations.length;
+        report.summary.axeErrors += axe.error ? 1 : 0;
 
         report.targets.push({
           route,
